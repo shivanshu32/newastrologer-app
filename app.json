@@ -1,0 +1,46 @@
+{
+  "expo": {
+    "name": "Jyotish Call - Astrologer",
+    "slug": "jyotish-call-astrologer",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon-square.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.jyotishcall.astrologer"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon-square.png",
+        "backgroundColor": "#ffffff"
+      },
+      "package": "com.jyotishcall.astrologer"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#ffffff"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "your-project-id"
+      }
+    }
+  }
+}
