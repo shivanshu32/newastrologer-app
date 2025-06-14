@@ -2,7 +2,7 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // API URL
-const API_URL = 'http://localhost:5000/api/v1';
+const API_URL = 'http://192.168.29.107:5000/api/v1';
 
 // Create axios instance
 const API = axios.create({
@@ -25,8 +25,8 @@ API.interceptors.request.use(
 
 // Auth API
 export const authAPI = {
-  requestOtp: (phoneNumber) => API.post('/auth/request-otp', { phoneNumber, role: 'astrologer' }),
-  verifyOtp: (phoneNumber, otp) => API.post('/auth/verify-otp', { phoneNumber, otp, role: 'astrologer' }),
+  requestOtp: (phoneNumber) => API.post('/auth/request-otp', { mobile: phoneNumber, role: 'astrologer' }),
+  verifyOtp: (phoneNumber, otp) => API.post('/auth/verify-otp', { mobile: phoneNumber, otp, role: 'astrologer' }),
   updateProfile: (profileData) => API.put('/astrologers/profile', profileData),
   registerDeviceToken: (token) => API.post('/astrologers/register-device-token', { token }),
 };

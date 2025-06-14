@@ -208,7 +208,7 @@ const HomeScreen = ({ navigation }) => {
           <Text style={styles.statLabel}>Earnings</Text>
         </View>
         <View style={styles.statCard}>
-          <Text style={styles.statValue}>{user?.rating || 0}</Text>
+          <Text style={styles.statValue}>{typeof user?.rating === 'object' ? (user?.rating?.average || 0) : (user?.rating || 0)}</Text>
           <Text style={styles.statLabel}>Rating</Text>
         </View>
         <View style={styles.statCard}>

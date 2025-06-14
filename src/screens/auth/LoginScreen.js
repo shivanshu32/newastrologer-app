@@ -38,7 +38,8 @@ const LoginScreen = ({ navigation }) => {
     if (result.success) {
       navigation.navigate('OtpVerification', { phoneNumber });
     } else {
-      Alert.alert('Error', result.message || 'Failed to send OTP. Please try again.');
+      // Display the specific error message from the backend
+      Alert.alert('Authentication Error', result.message || 'Failed to send OTP. Please try again.');
     }
   };
 

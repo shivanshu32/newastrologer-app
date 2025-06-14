@@ -1,6 +1,7 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
+import { authAPI } from '../services/api';
 
 const AuthContext = createContext();
 
@@ -38,46 +39,55 @@ export const AuthProvider = ({ children }) => {
   // Request OTP for login
   const requestOtp = async (phoneNumber) => {
     try {
+      console.log('Starting OTP request for phone number:', phoneNumber);
       setIsLoading(true);
       
-      // Call backend API to request OTP
-      const response = await axios.post('http://localhost:5000/api/v1/auth/request-otp', {
-        phoneNumber,
-        role: 'astrologer',
-      });
+      // Call backend API to request OTP using the centralized API service
+      console.log('Calling authAPI.requestOtp with phone number:', phoneNumber);
+      const response = await authAPI.requestOtp(phoneNumber);
+      console.log('OTP request response received:', response.data);
       
       if (!response.data.success) {
+        console.log('OTP request unsuccessful:', response.data.message);
         throw new Error(response.data.message || 'Failed to send OTP');
       }
       
+      console.log('OTP request successful');
       setIsLoading(false);
       return { success: true };
     } catch (error) {
       console.log('Error requesting OTP:', error);
+      console.log('Error details:', error.message);
+      console.log('Response data:', error.response?.data);
+      console.log('Response status:', error.response?.status);
       setIsLoading(false);
-      return { success: false, message: error.response?.data?.message || 'Failed to send OTP' };
+      
+      // Extract specific error message from the response
+      const errorMessage = error.response?.data?.error || error.response?.data?.message || 'Failed to send OTP';
+      return { success: false, message: errorMessage };
     }
   };
   
   // Verify OTP
   const verifyOtp = async (phoneNumber, otp) => {
     try {
+      console.log('Starting OTP verification for phone number:', phoneNumber, 'with OTP code:', otp);
       setIsLoading(true);
       
-      // Call backend API to verify OTP
-      const response = await axios.post('http://localhost:5000/api/v1/auth/verify-otp', {
-        phoneNumber,
-        otp,
-        role: 'astrologer',
-      });
+      // Call backend API to verify OTP using the centralized API service
+      console.log('Calling authAPI.verifyOtp with phone number:', phoneNumber, 'and OTP code:', otp);
+      const response = await authAPI.verifyOtp(phoneNumber, otp);
+      console.log('OTP verification response received:', response.data);
       
       if (!response.data.success) {
+        console.log('OTP verification unsuccessful:', response.data.message);
         throw new Error(response.data.message || 'Failed to verify OTP');
       }
       
+      console.log('OTP verification successful, storing token and user data');
       // Get user data and token from response
-      const userData = response.data.astrologer;
-      const authToken = response.data.token;
+      const userData = response.data.data.astrologer;
+      const authToken = response.data.data.token;
       
       // Save to AsyncStorage
       await AsyncStorage.setItem('astrologerToken', authToken);

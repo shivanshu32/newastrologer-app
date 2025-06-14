@@ -29,20 +29,28 @@ const ProfileScreen = () => {
   const [statusLoading, setStatusLoading] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
+  // Format rating value to handle both number and object formats
+  const formatRating = (rating) => {
+    if (rating === undefined || rating === null) return 4.8; // Default value
+    if (typeof rating === 'number') return rating;
+    if (typeof rating === 'object' && rating.average !== undefined) return rating.average;
+    return 4.8; // Fallback
+  };
+
   // Dummy user data
   const astrologer = {
-    name: user?.name || 'Pandit Sharma',
+    name: user?.displayName || user?.name || 'Pandit Sharma',
     email: user?.email || 'pandit.sharma@example.com',
-    phone: user?.phone || '+91 9876543210',
-    specialization: 'Vedic Astrology, Palmistry',
-    experience: '15 years',
-    languages: 'Hindi, English, Sanskrit',
-    rating: user?.rating || 4.8,
+    phone: user?.mobile || '+91 9876543210',
+    specialization: user?.specialization || 'Vedic Astrology, Palmistry',
+    experience: user?.experience ? `${user.experience} years` : '15 years',
+    languages: user?.languages ? user.languages.join(', ') : 'Hindi, English, Sanskrit',
+    rating: formatRating(user?.rating),
     totalConsultations: 256,
     totalReviews: 198,
-    walletBalance: user?.walletBalance || 12500,
-    profileImage: 'https://via.placeholder.com/150',
-    online: user?.online || false,
+    walletBalance: user?.wallet?.balance || 12500,
+    profileImage: user?.imageUrl || 'https://via.placeholder.com/150',
+    online: user?.status === 'online' || false,
   };
 
   const handleStatusChange = async (value) => {
