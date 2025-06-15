@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { NotificationProvider } from './src/context/NotificationContext';
+import { SocketProvider } from './src/context/SocketContext';
 import AuthNavigator from './src/navigation/AuthNavigator';
 import MainNavigator from './src/navigation/MainNavigator';
 import NotificationHandler from './src/components/NotificationHandler';
@@ -48,7 +49,9 @@ export default function App() {
       <StatusBar style="auto" />
       <AuthProvider>
         <NotificationProvider>
-          <AppContent />
+          <SocketProvider>
+            <AppContent />
+          </SocketProvider>
         </NotificationProvider>
       </AuthProvider>
     </View>

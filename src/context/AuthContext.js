@@ -2,6 +2,7 @@ import React, { createContext, useState, useContext, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { authAPI } from '../services/api';
+import { initSocket } from '../services/socketService';
 
 const AuthContext = createContext();
 
@@ -89,16 +90,25 @@ export const AuthProvider = ({ children }) => {
       const userData = response.data.data.astrologer;
       const authToken = response.data.data.token;
       
-      // Save to AsyncStorage
+      // Debug userData structure
+      console.log('userData:', JSON.stringify(userData, null, 2));
+      console.log('userData._id:', userData._id);
+      console.log('userData.id:', userData.id);
+      
+      // Store auth data in AsyncStorage
       await AsyncStorage.setItem('astrologerToken', authToken);
+      await AsyncStorage.setItem('astrologerId', userData._id);
       await AsyncStorage.setItem('astrologerData', JSON.stringify(userData));
       
-      // Update state
+      // Update auth state
       setUserToken(authToken);
       setUser(userData);
       
       // Set default auth header for axios
       axios.defaults.headers.common['Authorization'] = `Bearer ${authToken}`;
+      
+      // Socket connection will be handled by SocketManager component
+      console.log('Login successful - socket connection will be managed by SocketManager');
       
       setIsLoading(false);
       return { success: true };
