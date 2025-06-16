@@ -54,68 +54,53 @@ const WaitingRoomScreen = () => {
     
     // Listen for user joining the consultation
     const handleUserJoined = (data) => {
-      console.log('WaitingRoomScreen: User joined consultation event received:', data);
-      
-      // Verify this event is for the current booking
-      if (data && data.bookingId === bookingId) {
-        console.log('WaitingRoomScreen: Confirmed event is for current booking, navigating to chat');
-        
-        // Navigate to the appropriate consultation screen based on consultation type
-        const consultationType = bookingDetails?.consultationType || 'chat';
-        
-        if (consultationType === 'video') {
-          console.log('WaitingRoomScreen: Navigating to VideoCall screen');
-          navigation.replace('VideoCall', {
-            booking: bookingDetails,
-            roomId: data.roomId,
-            sessionId: data.sessionId
-          });
-        } else {
-          // Default to chat consultation
-          console.log('WaitingRoomScreen: Navigating to Chat screen');
-          navigation.replace('Chat', {
-            booking: bookingDetails,
-            roomId: data.roomId,
-            sessionId: data.sessionId
-          });
-        }
+      // Check if booking type is video or chat
+      if (bookingDetails?.consultationType === 'video') {
+        navigation.navigate('VideoCall', {
+          booking: bookingDetails,
+          bookingId,
+          roomId: data.roomId || `consultation:${bookingId}`,
+          sessionId: data.sessionId,
+        });
       } else {
-        console.log('WaitingRoomScreen: Event bookingId mismatch or missing:', 
-          data?.bookingId, 'vs current:', bookingId);
+        navigation.navigate('Chat', {
+          booking: bookingDetails,
+          bookingId,
+          roomId: data.roomId || `consultation:${bookingId}`,
+          sessionId: data.sessionId,
+        });
       }
     };
-    
-    // Listen for both event names
-    console.log('WaitingRoomScreen: Setting up listener for user_joined_consultation event');
-    socket.on('user_joined_consultation', handleUserJoined);
-    
-    // Add fallback event listener
-    console.log('WaitingRoomScreen: Setting up listener for join_consultation event (fallback)');
-    socket.on('join_consultation', handleUserJoined);
-    
-    // Add direct notification listener
-    console.log('WaitingRoomScreen: Setting up listener for direct_astrologer_notification event');
-    socket.on('direct_astrologer_notification', (data) => {
-      console.log('WaitingRoomScreen: Received direct notification:', data);
-      
+
+    // Listen for user joining the consultation
+    socket.on('user_joined_consultation', (data) => {
       if (data && data.bookingId === bookingId) {
-        console.log('WaitingRoomScreen: Direct notification matches current booking');
         handleUserJoined(data);
-      } else {
-        console.log('WaitingRoomScreen: Direct notification bookingId mismatch. Expected:', bookingId, 'Received:', data?.bookingId);
       }
     });
     
+    // Also listen for the alternate event name as a fallback
+    socket.on('join_consultation', (data) => {
+      if (data && data.bookingId === bookingId) {
+        handleUserJoined(data);
+      }
+    });
+    
+    // Listen for direct notifications
+    socket.on('direct_astrologer_notification', (data) => {
+      if (data && data.bookingId === bookingId) {
+        handleUserJoined(data);
+      }
+    });
+
     // Clean up listeners on unmount
     return () => {
-      console.log('WaitingRoomScreen: Cleaning up socket event listeners');
-      socket.off('user_joined_consultation', handleUserJoined);
-      socket.off('join_consultation', handleUserJoined);
+      socket.off('user_joined_consultation');
+      socket.off('join_consultation');
       socket.off('direct_astrologer_notification');
       
       // Leave the room when component unmounts
       socket.emit('leave_room', { bookingId });
-      console.log('WaitingRoomScreen: Left room for booking:', bookingId);
     };
   }, [socket, isConnected, bookingId, bookingDetails, navigation]);
 

@@ -196,7 +196,7 @@ export const listenForStatusUpdates = (socket, onStatusUpdate) => {
  * @param {String} messageType - Message type (text, image, etc.)
  * @returns {Promise<Object>} - Promise that resolves with response
  */
-export const sendChatMessage = (socket, roomId, message, messageType = 'text') => {
+export const sendChatMessage = (socket, bookingId, message, senderId, senderName) => {
   if (!socket || !socket.connected) {
     return Promise.reject(new Error('Socket not connected'));
   }
@@ -206,10 +206,11 @@ export const sendChatMessage = (socket, roomId, message, messageType = 'text') =
       reject(new Error('Send message timeout'));
     }, RESPONSE_TIMEOUT);
     
+    // Use server-compatible payload structure
     const messageData = {
-      roomId,
+      roomId: bookingId,
       content: message,
-      type: messageType,
+      type: 'text',
       timestamp: new Date().toISOString()
     };
     
@@ -237,10 +238,25 @@ export const listenForChatMessages = (socket, onChatMessage) => {
     return () => {};
   }
   
-  socket.on('receive_message', onChatMessage);
+  // Listen for receive_message event from server and transform payload to expected format
+  const messageHandler = (serverMessage) => {
+    // Transform server message format to client format
+    const clientMessage = {
+      id: serverMessage.id || Date.now().toString(),
+      senderId: serverMessage.sender,
+      senderName: serverMessage.senderRole === 'user' ? 'User' : 'Astrologer',
+      text: serverMessage.content,
+      timestamp: serverMessage.timestamp || new Date().toISOString(),
+      bookingId: serverMessage.roomId
+    };
+    
+    onChatMessage(clientMessage);
+  };
+  
+  socket.on('receive_message', messageHandler);
   
   return () => {
-    socket.off('receive_message', onChatMessage);
+    socket.off('receive_message', messageHandler);
   };
 };
 

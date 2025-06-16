@@ -13,6 +13,9 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
+import { useSocket } from '../../context/SocketContext';
+import { bookingsAPI, sessionsAPI } from '../../services/api';
+import * as socketService from '../../services/socketService';
 
 const ChatScreen = ({ route, navigation }) => {
   const { bookingId } = route.params || {};
@@ -24,89 +27,107 @@ const ChatScreen = ({ route, navigation }) => {
   const [sessionEnded, setSessionEnded] = useState(false);
   const [booking, setBooking] = useState(null);
   const { user } = useAuth();
-  
+  const { socket, isConnected } = useSocket();
   const flatListRef = useRef();
   const timerRef = useRef(null);
-  const socketRef = useRef(null);
+  const messageListenerCleanupRef = useRef(null);
 
   useEffect(() => {
     fetchBookingDetails();
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
-      if (socketRef.current) {
-        // In a real app, disconnect from socket
-        // socketRef.current.disconnect();
-      }
     };
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+      
+      // Clean up socket listeners
+      if (socket) {
+        // Clean up message listener using the stored cleanup function
+        if (messageListenerCleanupRef.current) {
+          messageListenerCleanupRef.current();
+        }
+        
+        socket.off('timer');
+        socket.off('session_end');
+      }
+    };
+  }, [socket]);
+
   const fetchBookingDetails = async () => {
     try {
-      // In a real app, this would call your backend API
-      // const response = await axios.get(`${API_URL}/bookings/${bookingId}`);
-      // setBooking(response.data);
+      setLoading(true);
       
-      // Simulate API call with dummy data
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Fetch booking details from API
+      const response = await bookingsAPI.getById(bookingId);
+      const bookingData = response.data.data;
       
-      const dummyBooking = {
-        id: bookingId,
-        userId: '101',
-        userName: 'Rahul Sharma',
-        userImage: 'https://via.placeholder.com/100',
-        type: 'chat',
-        status: 'active',
-        scheduledTime: new Date().toISOString(),
-        duration: 30,
-        amount: 500,
-        perMinuteRate: 16.67, // 500/30
-      };
-      
-      setBooking(dummyBooking);
-      
-      // Initialize dummy messages
-      const dummyMessages = [
-        {
-          id: '1',
-          senderId: dummyBooking.userId,
-          senderName: dummyBooking.userName,
-          text: 'Hello, I have some questions about my career path',
-          timestamp: new Date(Date.now() - 120000).toISOString(), // 2 minutes ago
-        },
-      ];
-      
-      setMessages(dummyMessages);
+      setBooking(bookingData);
       setLoading(false);
       
       // Start session
       startSession();
     } catch (error) {
-      console.log('Error fetching booking details:', error);
       setLoading(false);
       Alert.alert('Error', 'Failed to load chat session. Please try again.');
     }
   };
 
   const startSession = () => {
-    // In a real app, this would connect to a socket
-    // socketRef.current = io('YOUR_SOCKET_SERVER_URL');
-    // socketRef.current.emit('join-chat', { bookingId, astrologerId: user.id });
-    // socketRef.current.on('message', handleNewMessage);
-    // socketRef.current.on('session-end', handleSessionEnd);
-    
-    setSessionActive(true);
-    
-    // Start timer
-    timerRef.current = setInterval(() => {
-      setSessionTime(prev => prev + 1);
-    }, 1000);
+    if (socket && isConnected) {
+      // Join the room for this booking
+      socket.emit('join_room', { bookingId }, (response) => {
+        if (response && response.success) {
+          // Set up message listener using socketService
+          const cleanupMessageListener = socketService.listenForChatMessages(socket, (message) => {
+            if (message.bookingId === bookingId) {
+              setMessages(prevMessages => [...prevMessages, {
+                id: message.id || Date.now().toString(),
+                senderId: message.senderId,
+                senderName: message.senderName,
+                text: message.text,
+                timestamp: message.timestamp || new Date().toISOString(),
+              }]);
+            }
+          });
+          
+          // Listen for session timer updates
+          socket.on('timer', (data) => {
+            if (data.bookingId === bookingId) {
+              setSessionTime(data.seconds);
+            }
+          });
+          
+          // Listen for session end event
+          socket.on('session_end', (data) => {
+            if (data.bookingId === bookingId) {
+              handleSessionEnd(data);
+            }
+          });
+          
+          setSessionActive(true);
+          
+          // Store cleanup function
+          messageListenerCleanupRef.current = cleanupMessageListener;
+        }
+      });
+      
+      // Start timer
+      timerRef.current = setInterval(() => {
+        setSessionTime(prev => prev + 1);
+      }, 1000);
+    }
   };
 
   const handleNewMessage = (message) => {
     setMessages(prev => [...prev, message]);
   };
 
-  const handleSendMessage = () => {
+  const handleSendMessage = async () => {
     if (!inputText.trim() || !sessionActive) return;
     
     const newMessage = {
@@ -117,33 +138,22 @@ const ChatScreen = ({ route, navigation }) => {
       timestamp: new Date().toISOString(),
     };
     
-    // In a real app, this would emit to socket
-    // socketRef.current.emit('message', newMessage);
-    
-    // Add message to local state
-    setMessages(prev => [...prev, newMessage]);
-    setInputText('');
-    
-    // Simulate receiving a response after 2 seconds
-    if (messages.length < 5) {
-      setTimeout(() => {
-        const responseMessages = [
-          'I understand your concern. Let me check your birth chart.',
-          'Based on your planetary positions, I can see some interesting patterns.',
-          'Saturn\'s position indicates potential career growth in the next 6 months.',
-          'You might face some challenges initially, but Jupiter\'s influence will help you overcome them.',
-        ];
-        
-        const responseMessage = {
-          id: Date.now().toString(),
-          senderId: booking.userId,
-          senderName: booking.userName,
-          text: responseMessages[messages.length - 1],
-          timestamp: new Date().toISOString(),
-        };
-        
-        setMessages(prev => [...prev, responseMessage]);
-      }, 2000);
+    try {
+      // Send message via socketService
+      await socketService.sendChatMessage(
+        socket,
+        bookingId,
+        inputText.trim(),
+        user?.id,
+        user?.name || 'Astrologer'
+      );
+      
+      // Add message to local state
+      setMessages(prev => [...prev, newMessage]);
+      setInputText('');
+    } catch (error) {
+      console.error('Failed to send message:', error);
+      Alert.alert('Error', 'Failed to send message. Please try again.');
     }
   };
 
@@ -165,24 +175,38 @@ const ChatScreen = ({ route, navigation }) => {
     );
   };
 
-  const endSession = () => {
-    // In a real app, this would emit to socket
-    // socketRef.current.emit('end-session', { bookingId });
-    
-    if (timerRef.current) clearInterval(timerRef.current);
-    setSessionActive(false);
-    setSessionEnded(true);
-    
-    // Calculate charges
-    const minutes = Math.ceil(sessionTime / 60);
-    const charges = minutes * (booking?.perMinuteRate || 0);
-    
-    // Navigate to rating screen
-    navigation.replace('Rating', {
-      bookingId,
-      sessionDuration: minutes,
-      charges,
-    });
+  const endSession = async () => {
+    try {
+      // Emit end_session event to socket
+      if (socket && isConnected) {
+        socket.emit('end_session', { bookingId });
+      }
+      
+      // Call API to end the session
+      const activeSessionResponse = await sessionsAPI.getActive();
+      
+      if (activeSessionResponse.data && activeSessionResponse.data.session) {
+        const { sessionId } = activeSessionResponse.data.session;
+        await sessionsAPI.end(sessionId);
+      }
+      
+      if (timerRef.current) clearInterval(timerRef.current);
+      setSessionActive(false);
+      setSessionEnded(true);
+      
+      // Calculate charges
+      const minutes = Math.ceil(sessionTime / 60);
+      const charges = minutes * (booking?.perMinuteRate || 0);
+      
+      // Navigate to rating screen
+      navigation.replace('Rating', {
+        bookingId,
+        sessionDuration: minutes,
+        charges,
+      });
+    } catch (error) {
+      Alert.alert('Error', 'Failed to end session. Please try again.');
+    }
   };
 
   const formatTime = (seconds) => {
