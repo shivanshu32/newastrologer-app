@@ -32,27 +32,21 @@ export const SocketProvider = ({ children }) => {
     
     try {
       setIsConnecting(true);
-      console.log('SocketContext: Starting socket initialization...');
       
       // Get authentication data
       const token = await AsyncStorage.getItem('astrologerToken');
       const astrologerId = await AsyncStorage.getItem('astrologerId');
       
-      console.log('SocketContext: Retrieved credentials - token exists:', !!token, ', astrologerId exists:', !!astrologerId);
-      
       if (!token || !astrologerId) {
-        console.error('SocketContext: Token or astrologerId not found. Cannot initialize socket.');
+        console.error('Token or astrologerId not found. Cannot initialize socket.');
         setIsConnecting(false);
         return;
       }
       
       // Clean up existing socket if any
       if (socket) {
-        console.log('SocketContext: Cleaning up existing socket:', socket.id);
         cleanupSocket();
       }
-      
-      console.log('SocketContext: Creating new socket connection to', SOCKET_SERVER_URL, 'with path /ws');
       
       // Create new socket connection
       const newSocket = io(SOCKET_SERVER_URL, {
@@ -72,7 +66,6 @@ export const SocketProvider = ({ children }) => {
       
       // Set up event listeners
       newSocket.on('connect', () => {
-        console.log('SocketContext: Socket connected successfully with ID:', newSocket.id);
         setIsConnected(true);
         setIsConnecting(false);
         reconnectAttempts.current = 0;
@@ -82,7 +75,7 @@ export const SocketProvider = ({ children }) => {
       });
       
       newSocket.on('connect_error', (error) => {
-        console.error('SocketContext: Socket connection error:', error);
+        console.error('Socket connection error:', error);
         setIsConnecting(false);
         
         if (reconnectAttempts.current < MAX_RECONNECT_ATTEMPTS) {
@@ -91,7 +84,6 @@ export const SocketProvider = ({ children }) => {
       });
       
       newSocket.on('disconnect', (reason) => {
-        console.log('SocketContext: Socket disconnected. Reason:', reason);
         setIsConnected(false);
         
         // Clear ping interval

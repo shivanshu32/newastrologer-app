@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { View, Alert } from 'react-native';
-import * as socketService from '../services/socketService';
 import { useSocket } from '../context/SocketContext';
+import * as socketService from '../services/socketService';
 import BookingRequestPopup from './BookingRequestPopup';
 
 /**
@@ -12,115 +12,114 @@ import BookingRequestPopup from './BookingRequestPopup';
 const BookingRequestHandler = () => {
   const [bookingRequest, setBookingRequest] = useState(null);
   const [isPopupVisible, setIsPopupVisible] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  
+  // Get socket from context
+  const { socket, isConnected } = useSocket();
 
   // Handle incoming booking request
   const handleBookingRequest = useCallback((request) => {
     console.log('New booking request received:', request);
     setBookingRequest(request);
     setIsPopupVisible(true);
+    setError(null); // Clear any previous errors
   }, []);
 
-  // Handle booking acceptance
-  const handleAccept = useCallback(async (response) => {
-    console.log('Booking accepted:', response);
-    setIsPopupVisible(false);
+  // Handle accept booking request
+  const handleAcceptBooking = useCallback(async () => {
+    if (!bookingRequest || !bookingRequest.bookingId) return;
     
-    if (socket && isConnected && bookingRequest) {
-      try {
-        console.log('Sending booking acceptance for booking ID:', bookingRequest.bookingId);
-        await socketService.respondToBookingRequest(socket, bookingRequest.bookingId, true);
-        console.log('Booking acceptance sent successfully');
-      } catch (error) {
-        console.error('Error accepting booking request:', error);
-      }
-    } else {
-      console.error('Cannot accept booking: Socket not connected or booking request missing');
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const response = await socketService.respondToBookingRequest(socket, bookingRequest.bookingId, true);
+      console.log('Booking accepted successfully:', response);
+      
+      // Close the popup and reset state on success
+      setIsPopupVisible(false);
+      setBookingRequest(null);
+      
+      // Show success toast or alert
+      Alert.alert('Success', 'Booking accepted successfully');
+    } catch (error) {
+      console.error('Error accepting booking:', error);
+      setError(error.message || 'Failed to accept booking');
+    } finally {
+      setLoading(false);
     }
-    
-    setBookingRequest(null);
-    
-    // Additional logic can be added here, such as:
-    // - Navigate to consultation screen
-    // - Show preparation instructions
-    // - Update astrologer status
-  }, [socket, isConnected, bookingRequest]);
+  }, [socket, bookingRequest]);
 
-  // Handle booking rejection
-  const handleReject = useCallback(async (response) => {
-    console.log('Booking rejected:', response);
-    setIsPopupVisible(false);
+  // Handle reject booking request
+  const handleRejectBooking = useCallback(async () => {
+    if (!bookingRequest || !bookingRequest.bookingId) return;
     
-    if (socket && isConnected && bookingRequest) {
-      try {
-        console.log('Sending booking rejection for booking ID:', bookingRequest.bookingId);
-        await socketService.respondToBookingRequest(socket, bookingRequest.bookingId, false);
-        console.log('Booking rejection sent successfully');
-      } catch (error) {
-        console.error('Error rejecting booking request:', error);
-      }
-    } else {
-      console.error('Cannot reject booking: Socket not connected or booking request missing');
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const response = await socketService.respondToBookingRequest(socket, bookingRequest.bookingId, false);
+      console.log('Booking rejected successfully:', response);
+      
+      // Close the popup and reset state on success
+      setIsPopupVisible(false);
+      setBookingRequest(null);
+      
+      // Show success toast or alert
+      Alert.alert('Success', 'Booking rejected successfully');
+    } catch (error) {
+      console.error('Error rejecting booking:', error);
+      setError(error.message || 'Failed to reject booking');
+    } finally {
+      setLoading(false);
     }
-    
-    setBookingRequest(null);
-  }, [socket, isConnected, bookingRequest]);
+  }, [socket, bookingRequest]);
 
   // Close popup without responding (should be used carefully)
   const handleClose = useCallback(() => {
     console.log('Booking request popup closed without response');
     setIsPopupVisible(false);
+    setError(null);
     
     // Note: This should be used carefully as it doesn't respond to the request
     // Consider auto-rejecting if popup is closed without a response
   }, []);
 
-  // Get socket from context
-  const { socket, isConnected } = useSocket();
+
   
   // Set up socket listener for booking requests
   useEffect(() => {
-    if (!socket) {
-      console.log('BookingRequestHandler: Socket not connected, cannot listen for booking requests');
+    if (!socket || !isConnected) {
+      console.log('Socket not connected, skipping booking request listener setup');
       return;
     }
 
-    console.log(`BookingRequestHandler: Setting up listener for booking requests on socket: ${socket.id}`);
-    console.log(`Setting up listener for booking requests on socket: ${socket.id}`);
+    console.log('Setting up booking request listener');
     
     // Listen for new booking requests
     socket.on('new_booking_request', (bookingData) => {
-      console.log('=== NEW BOOKING REQUEST RECEIVED IN ASTROLOGER APP ===');
-      console.log('BookingRequestHandler: Received new_booking_request event with data:', JSON.stringify(bookingData));
-      
-      // Show an alert for debugging purposes
-      Alert.alert(
-        'New Booking Request',
-        `Received booking request from ${bookingData.userName} for ${bookingData.type} consultation`,
-        [{ text: 'OK' }]
-      );
-      
       handleBookingRequest(bookingData);
     });
 
-    // Also listen for any socket errors
-    socket.on('error', (error) => {
-      console.error('BookingRequestHandler: Socket error received:', error);
-    });
-
+    // Clean up listener on unmount
     return () => {
+      console.log('Cleaning up booking request listener');
       socket.off('new_booking_request');
-      socket.off('error');
     };
-  }, [socket]);
+  }, [socket, isConnected, handleBookingRequest]);
 
+  
   return (
     <View>
       <BookingRequestPopup
         visible={isPopupVisible}
         bookingRequest={bookingRequest}
-        onAccept={handleAccept}
-        onReject={handleReject}
+        onAccept={handleAcceptBooking}
+        onReject={handleRejectBooking}
         onClose={handleClose}
+        loading={loading}
+        error={error}
       />
     </View>
   );

@@ -1,6 +1,5 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, Modal, ActivityIndicator } from 'react-native';
-import { respondToBookingRequest } from '../services/socketService';
 
 /**
  * Popup component for displaying real-time booking requests to astrologers
@@ -11,44 +10,23 @@ import { respondToBookingRequest } from '../services/socketService';
  * @param {Function} props.onReject - Callback when booking is rejected
  * @param {Function} props.onClose - Callback when popup is closed
  */
-const BookingRequestPopup = ({ visible, bookingRequest, onAccept, onReject, onClose }) => {
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+const BookingRequestPopup = ({ visible, bookingRequest, onAccept, onReject, onClose, loading, error }) => {
 
   // Format consultation type for display
   const formatType = (type) => {
     return type ? type.charAt(0).toUpperCase() + type.slice(1) : '';
   };
 
-  // Handle booking response (accept/reject)
-  const handleResponse = async (accepted) => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      if (!bookingRequest || !bookingRequest.bookingId) {
-        throw new Error('Invalid booking request');
-      }
-
-      // Send response via socket
-      const response = await respondToBookingRequest(bookingRequest.bookingId, accepted);
-      
-      setLoading(false);
-      
-      if (accepted && onAccept) {
-        onAccept(response);
-      } else if (!accepted && onReject) {
-        onReject(response);
-      }
-      
-      // Close popup after successful response
-      if (onClose) {
-        onClose();
-      }
-    } catch (error) {
-      console.error('Booking response error:', error);
-      setLoading(false);
-      setError(error.message || 'Failed to respond to booking request');
+  // Simple handlers that call the parent component's callbacks
+  const handleAccept = () => {
+    if (onAccept) {
+      onAccept(bookingRequest);
+    }
+  };
+  
+  const handleReject = () => {
+    if (onReject) {
+      onReject(bookingRequest);
     }
   };
 
@@ -108,13 +86,13 @@ const BookingRequestPopup = ({ visible, bookingRequest, onAccept, onReject, onCl
                 <>
                   <TouchableOpacity
                     style={[styles.actionButton, styles.rejectButton]}
-                    onPress={() => handleResponse(false)}
+                    onPress={handleReject}
                   >
                     <Text style={styles.buttonText}>Reject</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     style={[styles.actionButton, styles.acceptButton]}
-                    onPress={() => handleResponse(true)}
+                    onPress={handleAccept}
                   >
                     <Text style={styles.buttonText}>Accept</Text>
                   </TouchableOpacity>

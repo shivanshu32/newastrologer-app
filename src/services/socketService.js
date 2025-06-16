@@ -18,12 +18,10 @@ const RESPONSE_TIMEOUT = 10000; // 10 seconds
  * @param {Boolean} accepted - Whether the booking is accepted
  * @returns {Promise<Object>} - Promise that resolves with response
  */
-export const respondToBookingRequest = (socket, bookingId, accepted) => {
+export const respondToBookingRequest = async (socket, bookingId, accepted) => {
   if (!socket || !socket.connected) {
     return Promise.reject(new Error('Socket not connected'));
   }
-  
-  console.log(`Responding to booking request ${bookingId}: ${accepted ? 'accepted' : 'rejected'}`);
   
   // Send response
   return new Promise((resolve, reject) => {
@@ -32,12 +30,14 @@ export const respondToBookingRequest = (socket, bookingId, accepted) => {
       reject(new Error('Response timeout'));
     }, RESPONSE_TIMEOUT);
     
+    // Convert boolean 'accepted' to string 'status' as expected by backend
+    const status = accepted ? 'accepted' : 'rejected';
+    
     // Listen for response
-    socket.emit('booking_response', { bookingId, accepted }, (response) => {
+    socket.emit('booking_response', { bookingId, status }, (response) => {
       clearTimeout(timeout);
       
       if (response && response.success) {
-        console.log('Booking response acknowledged:', response);
         resolve(response);
       } else {
         console.error('Booking response error:', response);
@@ -206,7 +206,14 @@ export const sendChatMessage = (socket, roomId, message, messageType = 'text') =
       reject(new Error('Send message timeout'));
     }, RESPONSE_TIMEOUT);
     
-    socket.emit('chat_message', { roomId, message, messageType }, (response) => {
+    const messageData = {
+      roomId,
+      content: message,
+      type: messageType,
+      timestamp: new Date().toISOString()
+    };
+    
+    socket.emit('send_message', messageData, (response) => {
       clearTimeout(timeout);
       
       if (response && response.success) {
@@ -230,10 +237,10 @@ export const listenForChatMessages = (socket, onChatMessage) => {
     return () => {};
   }
   
-  socket.on('chat_message', onChatMessage);
+  socket.on('receive_message', onChatMessage);
   
   return () => {
-    socket.off('chat_message', onChatMessage);
+    socket.off('receive_message', onChatMessage);
   };
 };
 
