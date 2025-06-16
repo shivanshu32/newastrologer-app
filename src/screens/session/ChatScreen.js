@@ -27,6 +27,8 @@ const ChatScreen = ({ route, navigation }) => {
   const [sessionTime, setSessionTime] = useState(0);
   const [sessionEnded, setSessionEnded] = useState(false);
   const [booking, setBooking] = useState(null);
+  const [isUserTyping, setIsUserTyping] = useState(false);
+  const typingTimeoutRef = useRef(null);
   const { user } = useAuth();
   const { socket, isConnected } = useSocket();
   const flatListRef = useRef();
@@ -86,15 +88,66 @@ const ChatScreen = ({ route, navigation }) => {
           // Set up message listener using socketService
           const cleanupMessageListener = socketService.listenForChatMessages(socket, (message) => {
             if (message.bookingId === bookingId) {
-              setMessages(prevMessages => [...prevMessages, {
+              const newMessage = {
                 id: message.id || Date.now().toString(),
                 senderId: message.senderId,
                 senderName: message.senderName,
                 text: message.text,
                 timestamp: message.timestamp || new Date().toISOString(),
-              }]);
+                status: 'sent' // Initial status is 'sent'
+              };
+              
+              setMessages(prevMessages => [...prevMessages, newMessage]);
+              
+              // If the message is from the user, mark it as read
+              if (message.senderId !== user?.id) {
+                socketService.markMessageAsRead(socket, bookingId, newMessage.id);
+              }
             }
           });
+          
+          // Set up typing indicator listeners
+          const cleanupTypingListener = socketService.listenForTypingStatus(
+            socket,
+            (data) => {
+              console.log('[ASTROLOGER-APP] Received typing_started event:', data);
+              if (data.bookingId === bookingId) {
+                setIsUserTyping(true);
+                console.log('[ASTROLOGER-APP] Set isUserTyping to true');
+              }
+            },
+            (data) => {
+              console.log('[ASTROLOGER-APP] Received typing_stopped event:', data);
+              if (data.bookingId === bookingId) {
+                setIsUserTyping(false);
+                console.log('[ASTROLOGER-APP] Set isUserTyping to false');
+              }
+            }
+          );
+          
+          // Set up message status update listener
+          const cleanupStatusListener = socketService.listenForMessageStatusUpdates(
+            socket,
+            (data) => {
+              console.log('[ASTROLOGER-APP] Received message_status_update:', data);
+              if (data.bookingId === bookingId) {
+                setMessages(prevMessages => {
+                  const updatedMessages = prevMessages.map(msg => 
+                    msg.id === data.messageId ? { ...msg, status: 'read' } : msg
+                  );
+                  console.log('[ASTROLOGER-APP] Updated message status to read for message:', data.messageId);
+                  return updatedMessages;
+                });
+              }
+            }
+          );
+          
+          // Store all cleanup functions
+          messageListenerCleanupRef.current = () => {
+            cleanupMessageListener();
+            cleanupTypingListener();
+            cleanupStatusListener();
+          };
           
           // Listen for session timer updates
           socket.on('session_timer', (data) => {
@@ -144,33 +197,74 @@ const ChatScreen = ({ route, navigation }) => {
     // Capture the trimmed input text before clearing it
     const messageText = inputText.trim();
     
+    const messageId = Date.now().toString();
     const newMessage = {
-      id: Date.now().toString(),
+      id: messageId,
       senderId: user?.id || 'astrologer',
       senderName: user?.name || 'Astrologer',
       text: messageText,
       timestamp: new Date().toISOString(),
+      status: 'sending' // Initial status is 'sending'
     };
     
     try {
       // Clear input immediately for better UX
       setInputText('');
       
-      // Send message via socketService
+      // Send typing_stopped event when sending a message
+      socketService.sendTypingStatus(socket, bookingId, false);
+      
+      // Add message to local state
+      setMessages(prev => [...prev, newMessage]);
+      
+      // Send message via socketService with messageId
       await socketService.sendChatMessage(
         socket,
         bookingId,
         messageText,
         user?.id,
-        user?.name || 'Astrologer'
+        user?.name || 'Astrologer',
+        messageId // Pass the messageId to track read receipts
       );
       
-      // Add message to local state
-      setMessages(prev => [...prev, newMessage]);
+      // Update message status to 'sent'
+      setMessages(prevMessages => 
+        prevMessages.map(msg => 
+          msg.id === messageId ? { ...msg, status: 'sent' } : msg
+        )
+      );
     } catch (error) {
       console.error('Failed to send message:', error);
       Alert.alert('Error', 'Failed to send message. Please try again.');
     }
+  };
+  
+  // Handle text input changes with typing indicator
+  const handleTextInputChange = (text) => {
+    setInputText(text);
+    
+    // Only emit typing events if the session is active
+    if (!sessionActive || !socket) {
+      console.log('[ASTROLOGER-APP] Not sending typing event - session inactive or socket null');
+      return;
+    }
+    
+    // Send typing_started event
+    console.log('[ASTROLOGER-APP] Emitting typing_started event for bookingId:', bookingId);
+    socketService.sendTypingStatus(socket, bookingId, true);
+    
+    // Clear any existing timeout
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    
+    // Set a new timeout to emit typing_stopped after 1 second of inactivity
+    typingTimeoutRef.current = setTimeout(() => {
+      if (socket && isConnected) {
+        console.log('[ASTROLOGER-APP] Emitting typing_stopped event after timeout for bookingId:', bookingId);
+        socketService.sendTypingStatus(socket, bookingId, false);
+      }
+    }, 1000);
   };
 
   const handleEndSession = () => {
@@ -241,6 +335,27 @@ const ChatScreen = ({ route, navigation }) => {
     // Check if the message is from the user (not from the astrologer)
     const isUser = item.senderId !== user?.id;
     
+    // Render status indicators for astrologer messages
+    const renderStatusIndicator = () => {
+      if (isUser) return null; // Only show status for astrologer's messages
+      
+      switch (item.status) {
+        case 'sending':
+          return <Ionicons name="time-outline" size={12} color="#888" style={styles.statusIcon} />;
+        case 'sent':
+          return <Ionicons name="checkmark-outline" size={12} color="#888" style={styles.statusIcon} />;
+        case 'read':
+          return (
+            <View style={styles.doubleTickContainer}>
+              <Ionicons name="checkmark-outline" size={12} color="#4CAF50" style={styles.statusIcon} />
+              <Ionicons name="checkmark-outline" size={12} color="#4CAF50" style={[styles.statusIcon, styles.secondTick]} />
+            </View>
+          );
+        default:
+          return <Ionicons name="checkmark-outline" size={12} color="#888" style={styles.statusIcon} />;
+      }
+    };
+    
     return (
       <View style={[
         styles.messageContainer,
@@ -256,7 +371,10 @@ const ChatScreen = ({ route, navigation }) => {
           ]}>
             {item.text}
           </Text>
-          <Text style={styles.messageTime}>{formatMessageTime(item.timestamp)}</Text>
+          <View style={styles.messageFooter}>
+            <Text style={styles.messageTime}>{formatMessageTime(item.timestamp)}</Text>
+            {renderStatusIndicator()}
+          </View>
         </View>
       </View>
     );
@@ -312,18 +430,25 @@ const ChatScreen = ({ route, navigation }) => {
             data={messages}
             renderItem={renderMessage}
             keyExtractor={(item) => item.id}
-            contentContainerStyle={styles.messagesList}
+            contentContainerStyle={styles.messageList}
             onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
             onLayout={() => flatListRef.current?.scrollToEnd({ animated: true })}
           />
         </View>
+        
+        {/* Typing indicator */}
+        {isUserTyping && (
+          <View style={styles.typingIndicatorContainer}>
+            <Text style={styles.typingIndicatorText}>User is typing...</Text>
+          </View>
+        )}
         
         <View style={styles.inputContainer}>
           <TextInput
             style={styles.input}
             placeholder="Type a message..."
             value={inputText}
-            onChangeText={setInputText}
+            onChangeText={handleTextInputChange}
             multiline
             maxLength={500}
             editable={sessionActive && !sessionEnded}
@@ -415,7 +540,7 @@ const styles = StyleSheet.create({
     marginLeft: 5,
     fontWeight: 'bold',
   },
-  messagesList: {
+  messageList: {
     padding: 15,
     paddingBottom: 70,
   },
@@ -462,15 +587,46 @@ const styles = StyleSheet.create({
     color: '#333',
   },
   astrologerMessageText: {
+    fontSize: 14,
     color: '#fff',
     fontWeight: '500',
   },
   messageTime: {
     fontSize: 10,
-    color: '#999',
-    alignSelf: 'flex-end',
-    marginTop: 5,
+    color: '#888',
+    marginTop: 4,
+    marginRight: 4,
   },
+  messageFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'flex-end',
+  },
+  statusIcon: {
+    marginLeft: 2,
+  },
+  doubleTickContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  secondTick: {
+    marginLeft: -5,
+  },
+  typingIndicatorContainer: {
+    padding: 8,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 16,
+    marginHorizontal: 16,
+    marginBottom: 8,
+    alignSelf: 'flex-start',
+    maxWidth: '70%',
+  },
+  typingIndicatorText: {
+    color: '#666',
+    fontStyle: 'italic',
+    fontSize: 12,
+  },
+
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -518,6 +674,11 @@ const styles = StyleSheet.create({
     paddingVertical: 5,
     paddingHorizontal: 10,
     borderRadius: 15,
+  },
+  endSessionButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 12,
   },
   endSessionButtonText: {
     color: '#fff',

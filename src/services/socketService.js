@@ -5,6 +5,8 @@
  * a socket instance as an argument instead of using a global socket.
  * 
  * Socket initialization and management is now handled by SocketContext.
+ *
+ * Enhanced with typing indicator and read receipt functionality.
  */
 
 // Constants
@@ -196,7 +198,7 @@ export const listenForStatusUpdates = (socket, onStatusUpdate) => {
  * @param {String} messageType - Message type (text, image, etc.)
  * @returns {Promise<Object>} - Promise that resolves with response
  */
-export const sendChatMessage = (socket, bookingId, message, senderId, senderName) => {
+export const sendChatMessage = (socket, bookingId, message, senderId, senderName, messageId) => {
   if (!socket || !socket.connected) {
     return Promise.reject(new Error('Socket not connected'));
   }
@@ -211,7 +213,10 @@ export const sendChatMessage = (socket, bookingId, message, senderId, senderName
       roomId: bookingId,
       content: message,
       type: 'text',
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      id: messageId || Date.now().toString(), // Include messageId for tracking read receipts
+      sender: senderId,
+      senderName: senderName
     };
     
     socket.emit('send_message', messageData, (response) => {
@@ -260,6 +265,109 @@ export const listenForChatMessages = (socket, onChatMessage) => {
   };
 };
 
+/**
+ * Send typing indicator status
+ * @param {Object} socket - Socket.io instance
+ * @param {String} bookingId - Booking ID (room ID)
+ * @param {Boolean} isTyping - Whether the user is typing or stopped typing
+ * @returns {Promise<void>}
+ */
+export const sendTypingStatus = (socket, bookingId, isTyping) => {
+  if (!socket || !socket.connected) {
+    console.error('[ASTROLOGER-APP] Socket not connected for typing status');
+    return Promise.reject(new Error('Socket not connected'));
+  }
+  
+  const eventName = isTyping ? 'typing_started' : 'typing_stopped';
+  
+  // Enhanced payload with more complete information
+  const payload = {
+    bookingId,
+    roomId: bookingId,  // Include roomId as some server implementations might expect this
+    userId: 'astrologer',
+    senderRole: 'astrologer'
+  };
+  
+  console.log(`[ASTROLOGER-APP] Emitting ${eventName} event with payload:`, payload);
+  
+  return new Promise((resolve) => {
+    socket.emit(eventName, payload);
+    resolve();
+  });
+};
+
+/**
+ * Listen for typing status changes
+ * @param {Object} socket - Socket.io instance
+ * @param {Function} onTypingStarted - Callback when typing starts
+ * @param {Function} onTypingStopped - Callback when typing stops
+ * @returns {Function} - Cleanup function to remove listeners
+ */
+export const listenForTypingStatus = (socket, onTypingStarted, onTypingStopped) => {
+  if (!socket || !socket.connected) {
+    console.error('[ASTROLOGER-APP] listenForTypingStatus: Socket not connected');
+    return () => {};
+  }
+  
+  // Wrap the callbacks with logging
+  const typingStartedHandler = (data) => {
+    console.log('[ASTROLOGER-APP] Received typing_started event:', data);
+    onTypingStarted(data);
+  };
+  
+  const typingStoppedHandler = (data) => {
+    console.log('[ASTROLOGER-APP] Received typing_stopped event:', data);
+    onTypingStopped(data);
+  };
+  
+  console.log('[ASTROLOGER-APP] Setting up typing status listeners');
+  socket.on('typing_started', typingStartedHandler);
+  socket.on('typing_stopped', typingStoppedHandler);
+  
+  return () => {
+    console.log('[ASTROLOGER-APP] Removing typing status listeners');
+    socket.off('typing_started', typingStartedHandler);
+    socket.off('typing_stopped', typingStoppedHandler);
+  };
+};
+
+/**
+ * Mark a message as read
+ * @param {Object} socket - Socket.io instance
+ * @param {String} bookingId - Booking ID (room ID)
+ * @param {String} messageId - ID of the message that was read
+ * @returns {Promise<void>}
+ */
+export const markMessageAsRead = (socket, bookingId, messageId) => {
+  if (!socket || !socket.connected) {
+    return Promise.reject(new Error('Socket not connected'));
+  }
+  
+  return new Promise((resolve) => {
+    socket.emit('message_read', { bookingId, messageId });
+    resolve();
+  });
+};
+
+/**
+ * Listen for message status updates (read receipts)
+ * @param {Object} socket - Socket.io instance
+ * @param {Function} onMessageStatusUpdate - Callback for status updates
+ * @returns {Function} - Cleanup function to remove listener
+ */
+export const listenForMessageStatusUpdates = (socket, onMessageStatusUpdate) => {
+  if (!socket || !socket.connected) {
+    console.error('listenForMessageStatusUpdates: Socket not connected');
+    return () => {};
+  }
+  
+  socket.on('message_status_update', onMessageStatusUpdate);
+  
+  return () => {
+    socket.off('message_status_update', onMessageStatusUpdate);
+  };
+};
+
 // Export all functions as a default object for convenience
 export default {
   respondToBookingRequest,
@@ -270,5 +378,9 @@ export default {
   listenForTimerUpdates,
   listenForStatusUpdates,
   sendChatMessage,
-  listenForChatMessages
+  listenForChatMessages,
+  sendTypingStatus,
+  listenForTypingStatus,
+  markMessageAsRead,
+  listenForMessageStatusUpdates
 };
