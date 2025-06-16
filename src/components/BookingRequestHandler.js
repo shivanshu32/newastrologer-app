@@ -3,6 +3,7 @@ import { View, Alert } from 'react-native';
 import { useSocket } from '../context/SocketContext';
 import * as socketService from '../services/socketService';
 import BookingRequestPopup from './BookingRequestPopup';
+import { useNavigation } from '@react-navigation/native';
 
 /**
  * Component to handle real-time booking requests for astrologers
@@ -15,8 +16,9 @@ const BookingRequestHandler = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   
-  // Get socket from context
+  // Get socket from context and navigation
   const { socket, isConnected } = useSocket();
+  const navigation = useNavigation();
 
   // Handle incoming booking request
   const handleBookingRequest = useCallback((request) => {
@@ -39,17 +41,29 @@ const BookingRequestHandler = () => {
       
       // Close the popup and reset state on success
       setIsPopupVisible(false);
+      
+      // Store booking details before resetting state
+      const currentBookingRequest = {...bookingRequest};
       setBookingRequest(null);
       
+      // Navigate to the waiting room screen using nested navigation
+      navigation.navigate('Bookings', {
+        screen: 'WaitingRoom',
+        params: {
+          bookingId: currentBookingRequest.bookingId,
+          bookingDetails: currentBookingRequest
+        }
+      });
+      
       // Show success toast or alert
-      Alert.alert('Success', 'Booking accepted successfully');
+      Alert.alert('Success', 'Booking accepted successfully. Redirecting to waiting room...');
     } catch (error) {
       console.error('Error accepting booking:', error);
       setError(error.message || 'Failed to accept booking');
     } finally {
       setLoading(false);
     }
-  }, [socket, bookingRequest]);
+  }, [socket, bookingRequest, navigation]);
 
   // Handle reject booking request
   const handleRejectBooking = useCallback(async () => {

@@ -14,6 +14,7 @@ import ChatScreen from '../screens/session/ChatScreen';
 import VideoCallScreen from '../screens/session/VideoCallScreen';
 import RatingScreen from '../screens/session/RatingScreen';
 import AvailabilityScreen from '../screens/main/AvailabilityScreen';
+import WaitingRoomScreen from '../screens/WaitingRoomScreen';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
@@ -49,6 +50,7 @@ const BookingsStack = () => {
       <Stack.Screen name="Chat" component={ChatScreen} />
       <Stack.Screen name="VideoCall" component={VideoCallScreen} />
       <Stack.Screen name="Rating" component={RatingScreen} />
+      <Stack.Screen name="WaitingRoom" component={WaitingRoomScreen} />
     </Stack.Navigator>
   );
 };
