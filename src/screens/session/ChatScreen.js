@@ -10,6 +10,7 @@ import {
   Platform,
   ActivityIndicator,
   Alert,
+  SafeAreaView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
@@ -96,6 +97,12 @@ const ChatScreen = ({ route, navigation }) => {
           });
           
           // Listen for session timer updates
+          socket.on('session_timer', (data) => {
+            // The server sends { sessionId, durationSeconds, durationMinutes, currentAmount, currency }
+            setSessionTime(data.durationSeconds);
+          });
+          
+          // Keep the old listener for backward compatibility
           socket.on('timer', (data) => {
             if (data.bookingId === bookingId) {
               setSessionTime(data.seconds);
@@ -116,10 +123,14 @@ const ChatScreen = ({ route, navigation }) => {
         }
       });
       
-      // Start timer
-      timerRef.current = setInterval(() => {
-        setSessionTime(prev => prev + 1);
-      }, 1000);
+      // We'll rely on server timer events instead of local timer
+      // The server will emit 'timer' events that we're already listening for
+      
+      // Notify server that astrologer has joined and session can start
+      socket.emit('astrologer_joined', { bookingId });
+      
+      // Explicitly request timer start
+      socket.emit('start_session_timer', { bookingId });
     }
   };
 
@@ -130,27 +141,32 @@ const ChatScreen = ({ route, navigation }) => {
   const handleSendMessage = async () => {
     if (!inputText.trim() || !sessionActive) return;
     
+    // Capture the trimmed input text before clearing it
+    const messageText = inputText.trim();
+    
     const newMessage = {
       id: Date.now().toString(),
       senderId: user?.id || 'astrologer',
       senderName: user?.name || 'Astrologer',
-      text: inputText.trim(),
+      text: messageText,
       timestamp: new Date().toISOString(),
     };
     
     try {
+      // Clear input immediately for better UX
+      setInputText('');
+      
       // Send message via socketService
       await socketService.sendChatMessage(
         socket,
         bookingId,
-        inputText.trim(),
+        messageText,
         user?.id,
         user?.name || 'Astrologer'
       );
       
       // Add message to local state
       setMessages(prev => [...prev, newMessage]);
-      setInputText('');
     } catch (error) {
       console.error('Failed to send message:', error);
       Alert.alert('Error', 'Failed to send message. Please try again.');
@@ -182,14 +198,10 @@ const ChatScreen = ({ route, navigation }) => {
         socket.emit('end_session', { bookingId });
       }
       
-      // Call API to end the session
-      const activeSessionResponse = await sessionsAPI.getActive();
+      // Call API to end the session directly with the bookingId
+      await sessionsAPI.end(bookingId);
       
-      if (activeSessionResponse.data && activeSessionResponse.data.session) {
-        const { sessionId } = activeSessionResponse.data.session;
-        await sessionsAPI.end(sessionId);
-      }
-      
+      // Clean up any timers
       if (timerRef.current) clearInterval(timerRef.current);
       setSessionActive(false);
       setSessionEnded(true);
@@ -205,6 +217,7 @@ const ChatScreen = ({ route, navigation }) => {
         charges,
       });
     } catch (error) {
+      console.error('Error ending session:', error);
       Alert.alert('Error', 'Failed to end session. Please try again.');
     }
   };
@@ -225,7 +238,8 @@ const ChatScreen = ({ route, navigation }) => {
   };
 
   const renderMessage = ({ item }) => {
-    const isUser = item.senderId === booking?.userId;
+    // Check if the message is from the user (not from the astrologer)
+    const isUser = item.senderId !== user?.id;
     
     return (
       <View style={[
@@ -236,7 +250,12 @@ const ChatScreen = ({ route, navigation }) => {
           styles.messageBubble,
           isUser ? styles.userMessageBubble : styles.astrologerMessageBubble,
         ]}>
-          <Text style={styles.messageText}>{item.text}</Text>
+          <Text style={[
+            styles.messageText,
+            isUser ? styles.userMessageText : styles.astrologerMessageText
+          ]}>
+            {item.text}
+          </Text>
           <Text style={styles.messageTime}>{formatMessageTime(item.timestamp)}</Text>
         </View>
       </View>
@@ -253,83 +272,96 @@ const ChatScreen = ({ route, navigation }) => {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : null}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-    >
-      <View style={styles.header}>
-        <View style={styles.headerContent}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => {
-              if (sessionActive) {
-                handleEndSession();
-              } else {
-                navigation.goBack();
-              }
-            }}
-          >
-            <Ionicons name="arrow-back" size={24} color="#fff" />
-          </TouchableOpacity>
-          
-          <View style={styles.userInfo}>
-            <Text style={styles.userName}>{booking?.userName}</Text>
-            <Text style={styles.sessionType}>Chat Consultation</Text>
-          </View>
-          
-          <View style={styles.timerContainer}>
-            <Ionicons name="time-outline" size={16} color="#fff" />
-            <Text style={styles.timerText}>{formatTime(sessionTime)}</Text>
+    <SafeAreaView style={styles.safeArea}>
+      <KeyboardAvoidingView
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 80}
+        contentContainerStyle={{ flex: 1 }}
+      >
+        <View style={styles.header}>
+          <View style={styles.headerContent}>
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => {
+                if (sessionActive) {
+                  handleEndSession();
+                } else {
+                  navigation.goBack();
+                }
+              }}
+            >
+              <Ionicons name="arrow-back" size={24} color="#fff" />
+            </TouchableOpacity>
+            
+            <View style={styles.userInfo}>
+              <Text style={styles.userName}>{booking?.userName}</Text>
+              <Text style={styles.sessionType}>Chat Consultation</Text>
+            </View>
+            
+            <View style={styles.timerContainer}>
+              <Ionicons name="time-outline" size={16} color="#fff" />
+              <Text style={styles.timerText}>{formatTime(sessionTime)}</Text>
+            </View>
           </View>
         </View>
-      </View>
-      
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        renderItem={renderMessage}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.messagesList}
-        onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-        onLayout={() => flatListRef.current?.scrollToEnd({ animated: true })}
-      />
-      
-      <View style={styles.inputContainer}>
-        <TextInput
-          style={styles.input}
-          placeholder="Type a message..."
-          value={inputText}
-          onChangeText={setInputText}
-          multiline
-          maxLength={500}
-          editable={sessionActive && !sessionEnded}
-        />
-        <TouchableOpacity
-          style={[styles.sendButton, (!inputText.trim() || !sessionActive) && styles.sendButtonDisabled]}
-          onPress={handleSendMessage}
-          disabled={!inputText.trim() || !sessionActive}
-        >
-          <Ionicons name="send" size={20} color="#fff" />
-        </TouchableOpacity>
-      </View>
-      
-      {sessionActive && (
-        <TouchableOpacity
-          style={styles.endSessionButton}
-          onPress={handleEndSession}
-        >
-          <Text style={styles.endSessionButtonText}>End Session</Text>
-        </TouchableOpacity>
-      )}
-    </KeyboardAvoidingView>
+        
+        <View style={styles.chatContainer}>
+          <FlatList
+            ref={flatListRef}
+            data={messages}
+            renderItem={renderMessage}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.messagesList}
+            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+            onLayout={() => flatListRef.current?.scrollToEnd({ animated: true })}
+          />
+        </View>
+        
+        <View style={styles.inputContainer}>
+          <TextInput
+            style={styles.input}
+            placeholder="Type a message..."
+            value={inputText}
+            onChangeText={setInputText}
+            multiline
+            maxLength={500}
+            editable={sessionActive && !sessionEnded}
+          />
+          <TouchableOpacity
+            style={[styles.sendButton, (!inputText.trim() || !sessionActive || sessionEnded) && styles.sendButtonDisabled]}
+            onPress={handleSendMessage}
+            disabled={!inputText.trim() || !sessionActive || sessionEnded}
+          >
+            <Ionicons name="send" size={20} color="#fff" />
+          </TouchableOpacity>
+        </View>
+        
+        {sessionActive && (
+          <TouchableOpacity
+            style={styles.endSessionButton}
+            onPress={handleEndSession}
+          >
+            <Text style={styles.endSessionButtonText}>End Session</Text>
+          </TouchableOpacity>
+        )}
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#f5f5f5',
+  },
   container: {
     flex: 1,
-    backgroundColor: '#f8f8f8',
+    backgroundColor: '#f5f5f5',
+  },
+  chatContainer: {
+    flex: 1,
+    paddingBottom: 10,
   },
   loadingContainer: {
     flex: 1,
@@ -400,27 +432,38 @@ const styles = StyleSheet.create({
   messageBubble: {
     padding: 12,
     borderRadius: 18,
+    minWidth: 80,
   },
   userMessageBubble: {
     backgroundColor: '#fff',
     borderWidth: 1,
     borderColor: '#eee',
+    borderBottomLeftRadius: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 1,
+    elevation: 1,
   },
   astrologerMessageBubble: {
     backgroundColor: '#8A2BE2',
+    borderBottomRightRadius: 4,
+    shadowColor: '#8A2BE2',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
   },
   messageText: {
     fontSize: 14,
-    color: '#333',
-  },
-  astrologerMessageBubble: {
-    backgroundColor: '#8A2BE2',
+    lineHeight: 20,
   },
   userMessageText: {
     color: '#333',
   },
   astrologerMessageText: {
     color: '#fff',
+    fontWeight: '500',
   },
   messageTime: {
     fontSize: 10,
@@ -431,14 +474,13 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 10,
+    paddingHorizontal: 15,
+    paddingVertical: 10,
     backgroundColor: '#fff',
     borderTopWidth: 1,
-    borderTopColor: '#eee',
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
+    borderTopColor: '#e0e0e0',
+    minHeight: 60,
+    paddingBottom: Platform.OS === 'android' ? 15 : 10,
   },
   input: {
     flex: 1,
@@ -447,6 +489,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 15,
     paddingVertical: 10,
     maxHeight: 100,
+    fontSize: 15,
+    borderWidth: 1,
+    borderColor: '#e0e0e0',
   },
   sendButton: {
     width: 40,
@@ -456,6 +501,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 10,
+    shadowColor: '#8A2BE2',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 2,
+    elevation: 3,
   },
   sendButtonDisabled: {
     backgroundColor: '#ccc',
