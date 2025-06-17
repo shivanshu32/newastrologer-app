@@ -35,40 +35,53 @@ const WaitingRoomScreen = () => {
 
   // Listen for user join event
   useEffect(() => {
-    if (!socket || !isConnected || !bookingId) {
-      console.log('WaitingRoomScreen: Socket not connected or missing bookingId', { isConnected, bookingId });
-      return;
-    }
-    
-    console.log('WaitingRoomScreen: Setting up socket event listeners for bookingId:', bookingId);
-    
-    // Join a room specific to this booking
-    console.log('WaitingRoomScreen: Joining room for booking:', bookingId);
+    if (!socket || !isConnected || !bookingId) return;
+
+    // Join the room for this booking
     socket.emit('join_room', { bookingId }, (response) => {
       if (response && response.success) {
-        console.log('WaitingRoomScreen: Successfully joined room for booking:', bookingId);
+        console.log('Successfully joined room for booking:', bookingId);
       } else {
-        console.error('WaitingRoomScreen: Failed to join room:', response?.error || 'Unknown error');
+        console.error('Failed to join room:', response?.error || 'Unknown error');
       }
     });
-    
-    // Listen for user joining the consultation
+
+    // Navigation guard to prevent multiple rapid navigations
+    let hasNavigated = false;
+
     const handleUserJoined = (data) => {
-      // Check if booking type is video or chat
-      if (bookingDetails?.consultationType === 'video') {
-        navigation.navigate('VideoCall', {
-          booking: bookingDetails,
-          bookingId,
-          roomId: data.roomId || `consultation:${bookingId}`,
-          sessionId: data.sessionId,
-        });
+      // Prevent multiple navigations
+      if (hasNavigated) {
+        console.log('Navigation already occurred, ignoring duplicate event');
+        return;
+      }
+      
+      // Determine consultation type
+      const consultationType = data?.type || data?.consultationType || bookingDetails?.type || 'chat';
+      const isVideoCall = consultationType === 'video';
+      
+      // Enhanced booking details with session information
+      const enhancedBookingDetails = {
+        ...bookingDetails,
+        sessionId: data.sessionId || bookingDetails?.sessionId
+      };
+      
+      const navigationParams = {
+        booking: bookingDetails,
+        bookingId: bookingId,
+        roomId: data.roomId,
+        sessionId: enhancedBookingDetails.sessionId || bookingDetails?.sessionId || data.sessionId,
+      };
+      
+      // Set navigation guard
+      hasNavigated = true;
+      
+      if (isVideoCall) {
+        console.log('Navigating to video consultation');
+        navigation.navigate('VideoCall', navigationParams);
       } else {
-        navigation.navigate('Chat', {
-          booking: bookingDetails,
-          bookingId,
-          roomId: data.roomId || `consultation:${bookingId}`,
-          sessionId: data.sessionId,
-        });
+        console.log('Navigating to chat consultation');
+        navigation.navigate('Chat', navigationParams);
       }
     };
 
