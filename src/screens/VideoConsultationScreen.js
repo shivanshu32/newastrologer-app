@@ -73,7 +73,7 @@ const VideoConsultationScreen = () => {
             style: 'destructive', 
             onPress: () => {
               // Leave the room
-              if (socket && roomId) {
+              if (socket && socket.connected && roomId) {
                 socket.emit('leave_consultation_room', { bookingId, roomId });
               }
               navigation.goBack();
@@ -90,7 +90,12 @@ const VideoConsultationScreen = () => {
 
   // Join consultation room when component mounts
   useEffect(() => {
-    if (!socket || !bookingId || !roomId) return;
+    if (!socket || !socket.connected || !bookingId || !roomId) {
+      console.log('[ASTROLOGER-APP] Cannot join consultation room - socket not ready or missing required params');
+      return;
+    }
+    
+    console.log('[ASTROLOGER-APP] Socket is connected, proceeding with room join');
     
     // Join the room
     socket.emit('join_consultation_room', { bookingId, roomId });
@@ -135,9 +140,11 @@ const VideoConsultationScreen = () => {
       socket.off('signal', handleSignal);
       
       // Leave the room when component unmounts
-      socket.emit('leave_consultation_room', { bookingId, roomId });
+      if (socket && socket.connected && roomId) {
+        socket.emit('leave_consultation_room', { bookingId, roomId });
+      }
     };
-  }, [socket, bookingId, roomId, navigation, user.role, sessionId]);
+  }, [socket?.connected, bookingId, roomId, navigation, user.role, sessionId]);
 
   // Handle messages from WebView
   const handleWebViewMessage = (event) => {
@@ -151,6 +158,9 @@ const VideoConsultationScreen = () => {
           
         case 'ready':
           console.log('[ASTROLOGER-APP] WebView is ready, sending initialization data');
+          console.log('[ASTROLOGER-APP] Current user object:', JSON.stringify(user, null, 2));
+          console.log('[ASTROLOGER-APP] User role check:', user.role, 'equals astrologer?', user.role === 'astrologer');
+          
           // WebView is ready, send initial data
           sendMessageToWebView({
             type: 'init',
@@ -166,13 +176,15 @@ const VideoConsultationScreen = () => {
             sendMessageToWebView({
               type: 'create-offer'
             });
+          } else {
+            console.log('[ASTROLOGER-APP] Not creating offer - user role is not astrologer, role:', user.role);
           }
           break;
           
         case 'offer':
           console.log('[ASTROLOGER-APP] Received WebRTC offer from WebView, forwarding to server');
           // Forward offer to server
-          if (socket) {
+          if (socket && socket.connected) {
             socket.emit('signal', {
               roomId,
               sessionId,
@@ -186,7 +198,7 @@ const VideoConsultationScreen = () => {
         case 'answer':
           console.log('[ASTROLOGER-APP] Received WebRTC answer from WebView, forwarding to server');
           // Forward answer to server
-          if (socket) {
+          if (socket && socket.connected) {
             socket.emit('signal', {
               roomId,
               sessionId,
@@ -200,7 +212,7 @@ const VideoConsultationScreen = () => {
         case 'ice-candidate':
           console.log('[ASTROLOGER-APP] Received ICE candidate from WebView, forwarding to server');
           // Forward ICE candidate to server
-          if (socket) {
+          if (socket && socket.connected) {
             socket.emit('signal', {
               roomId,
               sessionId,
@@ -225,7 +237,7 @@ const VideoConsultationScreen = () => {
                 onPress: () => {
                   console.log('[ASTROLOGER-APP] User confirmed end call, leaving room');
                   // Leave the room
-                  if (socket && roomId) {
+                  if (socket && socket.connected && roomId) {
                     socket.emit('leave_consultation_room', { bookingId, roomId });
                   }
                   navigation.goBack();
@@ -243,7 +255,7 @@ const VideoConsultationScreen = () => {
         case 'call-ended':
           console.log('[ASTROLOGER-APP] Call ended from WebView');
           // Call ended from WebView
-          if (socket && roomId) {
+          if (socket && socket.connected && roomId) {
             socket.emit('leave_consultation_room', { bookingId, roomId });
           }
           navigation.goBack();

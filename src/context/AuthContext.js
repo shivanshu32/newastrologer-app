@@ -22,7 +22,10 @@ export const AuthProvider = ({ children }) => {
         
         if (token && userData) {
           setUserToken(token);
-          setUser(JSON.parse(userData));
+          const parsedUserData = JSON.parse(userData);
+          // Ensure role field is present for astrologer app
+          parsedUserData.role = 'astrologer';
+          setUser(parsedUserData);
           
           // Set default auth header for axios
           axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
@@ -90,10 +93,14 @@ export const AuthProvider = ({ children }) => {
       const userData = response.data.data.astrologer;
       const authToken = response.data.data.token;
       
+      // Add role field for astrologer app
+      userData.role = 'astrologer';
+      
       // Debug userData structure
       console.log('userData:', JSON.stringify(userData, null, 2));
       console.log('userData._id:', userData._id);
       console.log('userData.id:', userData.id);
+      console.log('userData.role:', userData.role);
       
       // Store auth data in AsyncStorage
       await AsyncStorage.setItem('astrologerToken', authToken);

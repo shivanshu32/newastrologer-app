@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC Voice Call</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: Arial, sans-serif;
+            color: white;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            justify-content: center;
+            align-items: center;
+        }
+        .voice-call-container {
+            text-align: center;
+            padding: 40px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            margin: 20px;
+        }
+        .call-status {
+            font-size: 24px;
+            margin-bottom: 20px;
+            font-weight: bold;
+        }
+        .participant-info {
+            font-size: 18px;
+            margin-bottom: 30px;
+            opacity: 0.9;
+        }
+        .timer-display {
+            font-size: 32px;
+            font-weight: bold;
+            margin: 20px 0;
+            color: #fff;
+            text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        }
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            margin-top: 30px;
+        }
+        .control-button {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+        .control-button:hover {
+            transform: scale(1.1);
+        }
+        .mic-button {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .mic-button.muted {
+            background-color: #f44336;
+        }
+        .end-call-button {
+            background-color: #f44336;
+            color: white;
+        }
+        .connection-status {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            padding: 10px 15px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 20px;
+            font-size: 14px;
+        }
+        .status-connected {
+            color: #4CAF50;
+        }
+        .status-connecting {
+            color: #FFC107;
+        }
+        .status-disconnected {
+            color: #f44336;
+        }
+        .audio-visualizer {
+            width: 200px;
+            height: 100px;
+            margin: 20px auto;
+            display: flex;
+            align-items: end;
+            justify-content: center;
+            gap: 3px;
+        }
+        .audio-bar {
+            width: 4px;
+            background: linear-gradient(to top, #4CAF50, #8BC34A);
+            border-radius: 2px;
+            transition: height 0.1s ease;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="connection-status" id="connectionStatus">
+            <span class="status-connecting">● Connecting...</span>
+        </div>
+        
+        <div class="voice-call-container">
+            <div class="call-status" id="callStatus">Voice Call</div>
+            <div class="participant-info" id="participantInfo">Connecting to call...</div>
+            
+            <div class="audio-visualizer" id="audioVisualizer">
+                <div class="audio-bar" style="height: 20px;"></div>
+                <div class="audio-bar" style="height: 40px;"></div>
+                <div class="audio-bar" style="height: 30px;"></div>
+                <div class="audio-bar" style="height: 50px;"></div>
+                <div class="audio-bar" style="height: 25px;"></div>
+                <div class="audio-bar" style="height: 45px;"></div>
+                <div class="audio-bar" style="height: 35px;"></div>
+                <div class="audio-bar" style="height: 20px;"></div>
+            </div>
+            
+            <div class="timer-display" id="timerDisplay">00:00</div>
+            
+            <div class="controls">
+                <button class="control-button mic-button" id="toggleMic" title="Toggle Microphone">
+                    🎤
+                </button>
+                <button class="control-button end-call-button" id="endCall" title="End Call">
+                    📞
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Communication with React Native
+        function sendToReactNative(message) {
+            try {
+                if (window.ReactNativeWebView) {
+                    window.ReactNativeWebView.postMessage(JSON.stringify(message));
+                }
+                console.log('Sent to React Native:', message);
+            } catch (error) {
+                console.error('Error sending to React Native:', error);
+            }
+        }
+
+        // Debug logger
+        function logWebRTC(type, message) {
+            const timestamp = new Date().toISOString();
+            const logMessage = `[${timestamp}] [VOICE-WEBRTC] [${type}] ${message}`;
+            console.log(logMessage);
+            sendToReactNative({
+                type: 'log',
+                data: { type, message: logMessage }
+            });
+        }
+
+        // Variables
+        let localStream;
+        let peerConnection;
+        let isMuted = false;
+        let isVideoMuted = true; // Always true for voice calls
+        let callTimer;
+        let startTime;
+        let audioContext;
+        let analyser;
+        let dataArray;
+
+        // Format time as MM:SS
+        function formatTime(seconds) {
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        // Start timer
+        function startTimer() {
+            startTime = Date.now();
+            callTimer = setInterval(() => {
+                const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                document.getElementById('timerDisplay').textContent = formatTime(elapsed);
+                
+                // Send timer update to React Native
+                sendToReactNative({
+                    type: 'timer_update',
+                    data: { duration: elapsed }
+                });
+            }, 1000);
+        }
+
+        // Initialize audio visualizer
+        function initAudioVisualizer() {
+            if (localStream && !audioContext) {
+                try {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    analyser = audioContext.createAnalyser();
+                    const source = audioContext.createMediaStreamSource(localStream);
+                    source.connect(analyser);
+                    
+                    analyser.fftSize = 256;
+                    const bufferLength = analyser.frequencyBinCount;
+                    dataArray = new Uint8Array(bufferLength);
+                    
+                    animateAudioBars();
+                } catch (error) {
+                    logWebRTC('ERROR', 'Failed to initialize audio visualizer: ' + error.message);
+                }
+            }
+        }
+
+        // Animate audio bars
+        function animateAudioBars() {
+            if (!analyser) return;
+            
+            requestAnimationFrame(animateAudioBars);
+            analyser.getByteFrequencyData(dataArray);
+            
+            const bars = document.querySelectorAll('.audio-bar');
+            bars.forEach((bar, index) => {
+                const value = dataArray[index * 4] || 0;
+                const height = Math.max(20, (value / 255) * 60);
+                bar.style.height = height + 'px';
+            });
+        }
+
+        // Initialize WebRTC
+        async function initWebRTC() {
+            try {
+                logWebRTC('INFO', 'Initializing Voice WebRTC...');
+                
+                // Check if navigator.mediaDevices is available
+                if (!navigator.mediaDevices) {
+                    logWebRTC('INFO', 'navigator.mediaDevices not available, trying polyfill...');
+                    
+                    // Polyfill for older browsers/WebView
+                    navigator.mediaDevices = {};
+                    
+                    // Check for getUserMedia in different locations
+                    if (navigator.getUserMedia) {
+                        navigator.mediaDevices.getUserMedia = function(constraints) {
+                            return new Promise((resolve, reject) => {
+                                navigator.getUserMedia(constraints, resolve, reject);
+                            });
+                        };
+                    } else if (navigator.webkitGetUserMedia) {
+                        navigator.mediaDevices.getUserMedia = function(constraints) {
+                            return new Promise((resolve, reject) => {
+                                navigator.webkitGetUserMedia(constraints, resolve, reject);
+                            });
+                        };
+                    } else if (navigator.mozGetUserMedia) {
+                        navigator.mediaDevices.getUserMedia = function(constraints) {
+                            return new Promise((resolve, reject) => {
+                                navigator.mozGetUserMedia(constraints, resolve, reject);
+                            });
+                        };
+                    } else {
+                        throw new Error('getUserMedia is not supported in this environment');
+                    }
+                }
+                
+                // Get user media (audio only)
+                localStream = await navigator.mediaDevices.getUserMedia({ 
+                    audio: true, 
+                    video: false 
+                });
+                
+                logWebRTC('SUCCESS', 'Got local audio stream');
+                
+                // Initialize audio visualizer
+                initAudioVisualizer();
+                
+                // Create peer connection
+                peerConnection = new RTCPeerConnection({
+                    iceServers: [
+                        { urls: 'stun:stun.l.google.com:19302' },
+                        { urls: 'stun:stun1.l.google.com:19302' }
+                    ]
+                });
+
+                // Add local stream to peer connection
+                localStream.getTracks().forEach(track => {
+                    peerConnection.addTrack(track, localStream);
+                });
+
+                // Handle remote stream
+                peerConnection.ontrack = (event) => {
+                    logWebRTC('SUCCESS', 'Received remote audio stream');
+                    const remoteAudio = new Audio();
+                    remoteAudio.srcObject = event.streams[0];
+                    remoteAudio.play().catch(e => {
+                        logWebRTC('ERROR', 'Failed to play remote audio: ' + e.message);
+                    });
+                    
+                    // Start timer when remote stream is received
+                    if (!callTimer) {
+                        startTimer();
+                    }
+                };
+
+                // Handle ICE candidates
+                peerConnection.onicecandidate = (event) => {
+                    if (event.candidate) {
+                        logWebRTC('INFO', 'Sending ICE candidate');
+                        sendToReactNative({
+                            type: 'voice_ice_candidate',
+                            data: { candidate: event.candidate }
+                        });
+                    }
+                };
+
+                // Handle connection state changes
+                peerConnection.onconnectionstatechange = () => {
+                    logWebRTC('INFO', `Connection state: ${peerConnection.connectionState}`);
+                    if (peerConnection.connectionState === 'connected') {
+                        logWebRTC('SUCCESS', 'Voice call connected successfully');
+                        if (!callTimer) {
+                            startTimer();
+                        }
+                    } else if (peerConnection.connectionState === 'failed') {
+                        logWebRTC('ERROR', 'Voice call connection failed');
+                        sendToReactNative({
+                            type: 'webrtc_error',
+                            data: { error: 'Connection failed' }
+                        });
+                    }
+                };
+
+                logWebRTC('SUCCESS', 'Voice WebRTC initialized successfully');
+                
+                // Notify React Native that WebRTC is ready
+                sendToReactNative({
+                    type: 'webrtc_ready',
+                    data: { ready: true }
+                });
+                
+            } catch (error) {
+                logWebRTC('ERROR', `Failed to initialize Voice WebRTC: ${error.message}`);
+                sendToReactNative({
+                    type: 'webrtc_error',
+                    data: { error: error.message }
+                });
+            }
+        }
+
+        // Handle messages from React Native
+        function handleMessage(message) {
+            logWebRTC('INFO', 'Received message: ' + JSON.stringify(message));
+            
+            switch (message.type) {
+                case 'voice_call_offer':
+                    handleOffer(message.data);
+                    break;
+                case 'voice_call_answer':
+                    handleAnswer(message.data);
+                    break;
+                case 'voice_ice_candidate':
+                    handleIceCandidate(message.data);
+                    break;
+                case 'create_voice_offer':
+                    createOffer();
+                    break;
+                case 'end_call':
+                    endCall();
+                    break;
+                case 'participant_info':
+                    updateParticipantInfo(message.data);
+                    break;
+            }
+        }
+
+        // Create offer
+        async function createOffer() {
+            try {
+                logWebRTC('INFO', 'Creating voice call offer...');
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                
+                sendToReactNative({
+                    type: 'voice_call_offer',
+                    data: { offer: offer }
+                });
+                
+                logWebRTC('SUCCESS', 'Voice call offer created and sent');
+            } catch (error) {
+                logWebRTC('ERROR', 'Failed to create offer: ' + error.message);
+            }
+        }
+
+        // Handle offer
+        async function handleOffer(data) {
+            try {
+                logWebRTC('INFO', 'Handling voice call offer...');
+                await peerConnection.setRemoteDescription(data.offer);
+                
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+                
+                sendToReactNative({
+                    type: 'voice_call_answer',
+                    data: { answer: answer }
+                });
+                
+                logWebRTC('SUCCESS', 'Voice call answer created and sent');
+            } catch (error) {
+                logWebRTC('ERROR', 'Failed to handle offer: ' + error.message);
+            }
+        }
+
+        // Handle answer
+        async function handleAnswer(data) {
+            try {
+                logWebRTC('INFO', 'Handling voice call answer...');
+                await peerConnection.setRemoteDescription(data.answer);
+                logWebRTC('SUCCESS', 'Voice call answer handled successfully');
+            } catch (error) {
+                logWebRTC('ERROR', 'Failed to handle answer: ' + error.message);
+            }
+        }
+
+        // Handle ICE candidate
+        async function handleIceCandidate(data) {
+            try {
+                logWebRTC('INFO', 'Adding ICE candidate...');
+                await peerConnection.addIceCandidate(data.candidate);
+                logWebRTC('SUCCESS', 'ICE candidate added successfully');
+            } catch (error) {
+                logWebRTC('ERROR', 'Failed to add ICE candidate: ' + error.message);
+            }
+        }
+
+        // Update participant info
+        function updateParticipantInfo(data) {
+            const { participantName, participantType } = data;
+            document.getElementById('participantInfo').textContent = 
+                `${participantType === 'astrologer' ? 'Speaking with' : 'Connected to'} ${participantName}`;
+        }
+
+        // Toggle mute
+        document.getElementById('toggleMic').addEventListener('click', () => {
+            const audioTracks = localStream.getAudioTracks();
+            audioTracks.forEach(track => {
+                track.enabled = !track.enabled;
+            });
+            
+            isMuted = !isMuted;
+            const button = document.getElementById('toggleMic');
+            
+            if (isMuted) {
+                button.classList.add('muted');
+                button.textContent = '🔇';
+                button.title = 'Unmute Microphone';
+            } else {
+                button.classList.remove('muted');
+                button.textContent = '🎤';
+                button.title = 'Mute Microphone';
+            }
+            
+            sendToReactNative({
+                type: 'audio_toggle',
+                data: { muted: isMuted }
+            });
+            
+            logWebRTC('INFO', isMuted ? 'Microphone muted' : 'Microphone unmuted');
+        });
+
+        // End call
+        function endCall() {
+            logWebRTC('INFO', 'Ending voice call...');
+            
+            // Clear timer
+            if (callTimer) {
+                clearInterval(callTimer);
+                callTimer = null;
+            }
+            
+            // Close audio context
+            if (audioContext) {
+                audioContext.close();
+                audioContext = null;
+            }
+            
+            // Stop local stream
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
+            
+            // Close peer connection
+            if (peerConnection) {
+                peerConnection.close();
+            }
+            
+            sendToReactNative({
+                type: 'call_ended',
+                data: { reason: 'user_ended' }
+            });
+            
+            logWebRTC('SUCCESS', 'Voice call ended');
+        }
+
+        // End call button
+        document.getElementById('endCall').addEventListener('click', endCall);
+        
+        // Listen for messages from React Native
+        window.addEventListener('message', (event) => {
+            try {
+                const message = JSON.parse(event.data);
+                handleMessage(message);
+            } catch (error) {
+                logWebRTC('ERROR', 'Failed to parse message: ' + error.message);
+            }
+        });
+        
+        // Initialize when page loads
+        window.onload = initWebRTC;
+    </script>
+</body>
+</html>

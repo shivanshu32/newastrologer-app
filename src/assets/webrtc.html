@@ -226,6 +226,13 @@
         // Handle messages from React Native
         const handleMessage = async (message) => {
             try {
+                logWebRTC('MESSAGE', `Processing message: ${message.type}`);
+                
+                // If this is a signal from the backend, extract the nested signal
+                if (message.signal) {
+                    message = message.signal;
+                }
+                
                 switch (message.type) {
                     case 'init':
                         logWebRTC('INIT', `Received initialization data: userId=${message.userId}, bookingId=${message.bookingId}, sessionId=${message.sessionId}, roomId=${message.roomId}`);
