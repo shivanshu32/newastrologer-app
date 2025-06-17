@@ -12,6 +12,7 @@ import WalletScreen from '../screens/main/WalletScreen';
 import ProfileScreen from '../screens/main/ProfileScreen';
 import ChatScreen from '../screens/session/ChatScreen';
 import VideoCallScreen from '../screens/session/VideoCallScreen';
+import VoiceCallScreen from '../screens/VoiceCallScreen';
 import RatingScreen from '../screens/session/RatingScreen';
 import AvailabilityScreen from '../screens/main/AvailabilityScreen';
 import WaitingRoomScreen from '../screens/WaitingRoomScreen';
@@ -31,6 +32,7 @@ const HomeStack = () => {
       <Stack.Screen name="HomeMain" component={HomeScreen} />
       <Stack.Screen name="Chat" component={ChatScreen} />
       <Stack.Screen name="VideoCall" component={VideoCallScreen} />
+      <Stack.Screen name="VoiceCall" component={VoiceCallScreen} />
       <Stack.Screen name="Rating" component={RatingScreen} />
       <Stack.Screen name="Availability" component={AvailabilityScreen} />
     </Stack.Navigator>
@@ -49,6 +51,7 @@ const BookingsStack = () => {
       <Stack.Screen name="BookingsMain" component={BookingsScreen} />
       <Stack.Screen name="Chat" component={ChatScreen} />
       <Stack.Screen name="VideoCall" component={VideoCallScreen} />
+      <Stack.Screen name="VoiceCall" component={VoiceCallScreen} />
       <Stack.Screen name="Rating" component={RatingScreen} />
       <Stack.Screen name="WaitingRoom" component={WaitingRoomScreen} />
     </Stack.Navigator>

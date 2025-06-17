@@ -190,8 +190,15 @@
             return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
         }
 
-        // Start timer
-        function startTimer() {
+        // Start timer (now only called explicitly)
+        function explicitStartTimer() {
+            // Don't start if already running
+            if (callTimer) {
+                console.log('Timer already running, not starting again');
+                return;
+            }
+            
+            logWebRTC('INFO', 'Explicitly starting consultation timer');
             startTime = Date.now();
             callTimer = setInterval(() => {
                 const elapsed = Math.floor((Date.now() - startTime) / 1000);
@@ -203,6 +210,11 @@
                     data: { duration: elapsed }
                 });
             }, 1000);
+            
+            // Update UI to show active call
+            document.getElementById('connectionStatus').innerHTML = 
+                '<span class="status-connected">● Connected</span>';
+            document.getElementById('callStatus').textContent = 'Voice Call in Progress';
         }
 
         // Initialize audio visualizer
@@ -309,10 +321,9 @@
                         logWebRTC('ERROR', 'Failed to play remote audio: ' + e.message);
                     });
                     
-                    // Start timer when remote stream is received
-                    if (!callTimer) {
-                        startTimer();
-                    }
+                    // Update UI to show we have audio
+                    document.getElementById('connectionStatus').innerHTML = 
+                        '<span class="status-connecting">● Audio Connected (Waiting for Timer)</span>';
                 };
 
                 // Handle ICE candidates
@@ -331,15 +342,26 @@
                     logWebRTC('INFO', `Connection state: ${peerConnection.connectionState}`);
                     if (peerConnection.connectionState === 'connected') {
                         logWebRTC('SUCCESS', 'Voice call connected successfully');
-                        if (!callTimer) {
-                            startTimer();
-                        }
+                        
+                        // Instead of starting timer directly, notify React Native that we're connected
+                        sendToReactNative({
+                            type: 'webrtc_local_connection_established',
+                            data: { connectionState: peerConnection.connectionState }
+                        });
+                        
+                        // Update UI to show connecting status
+                        document.getElementById('connectionStatus').innerHTML = 
+                            '<span class="status-connecting">● WebRTC Connected (Waiting for Timer)</span>';
                     } else if (peerConnection.connectionState === 'failed') {
                         logWebRTC('ERROR', 'Voice call connection failed');
                         sendToReactNative({
                             type: 'webrtc_error',
                             data: { error: 'Connection failed' }
                         });
+                        
+                        // Update UI to show failed status
+                        document.getElementById('connectionStatus').innerHTML = 
+                            '<span class="status-disconnected">● Connection Failed</span>';
                     }
                 };
 
@@ -382,6 +404,9 @@
                     break;
                 case 'participant_info':
                     updateParticipantInfo(message.data);
+                    break;
+                case 'start_the_timer':
+                    explicitStartTimer();
                     break;
             }
         }

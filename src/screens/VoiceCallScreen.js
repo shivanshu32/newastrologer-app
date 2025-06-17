@@ -29,6 +29,9 @@ const VoiceCallScreen = () => {
     duration: 0,
     currentAmount: 0
   });
+  const [isLocalWebRTCConnected, setIsLocalWebRTCConnected] = useState(false);
+  const [isRemoteWebRTCReadyForTimer, setIsRemoteWebRTCReadyForTimer] = useState(false);
+  const [isTimerStarted, setIsTimerStarted] = useState(false);
   
   // Get booking details from route params
   const { bookingId, sessionId, roomId, bookingDetails } = route.params || {};
@@ -132,6 +135,14 @@ const VoiceCallScreen = () => {
         console.log('[ASTROLOGER-APP] Not a voice consultation, ignoring event. Data:', data);
       }
     };
+    
+    // Handle when the other client is ready for timer
+    const handleWebRTCClientReadyForTimer = (data) => {
+      console.log('[ASTROLOGER-APP] Remote client is ready for timer:', data);
+      if (data && data.bookingId === bookingId) {
+        setIsRemoteWebRTCReadyForTimer(true);
+      }
+    };
 
     // Add socket listeners
     socket.on('voice_call_offer', handleVoiceCallOffer);
@@ -139,6 +150,7 @@ const VoiceCallScreen = () => {
     socket.on('voice_ice_candidate', handleVoiceIceCandidate);
     socket.on('start_voice_call', handleStartVoiceCall);
     socket.on('user_joined_consultation', handleUserJoinedConsultation);
+    socket.on('webrtc_client_ready_for_timer', handleWebRTCClientReadyForTimer);
 
     // Cleanup listeners
     return () => {
@@ -147,6 +159,7 @@ const VoiceCallScreen = () => {
       socket.off('voice_ice_candidate', handleVoiceIceCandidate);
       socket.off('start_voice_call', handleStartVoiceCall);
       socket.off('user_joined_consultation', handleUserJoinedConsultation);
+      socket.off('webrtc_client_ready_for_timer', handleWebRTCClientReadyForTimer);
     };
   }, [socket, bookingId, sessionId, roomId, user]);
 
@@ -220,6 +233,22 @@ const VoiceCallScreen = () => {
             fromAstrologer: true
           });
           break;
+          
+        case 'webrtc_local_connection_established':
+          console.log('[ASTROLOGER-APP] Local WebRTC connection established');
+          setIsLocalWebRTCConnected(true);
+          
+          // Notify the other client that we're ready for timer
+          if (socket && socket.connected) {
+            console.log('[ASTROLOGER-APP] Emitting webrtc_client_ready_for_timer');
+            socket.emit('webrtc_client_ready_for_timer', {
+              bookingId: bookingId,
+              sessionId: sessionId,
+              roomId: roomId,
+              fromAstrologer: true
+            });
+          }
+          break;
 
         case 'timer_update':
           setSessionInfo(prev => ({
@@ -291,6 +320,20 @@ const VoiceCallScreen = () => {
 
     return () => backHandler.remove();
   }, [sessionInfo.duration]);
+  
+  // Effect to start timer when both sides are ready
+  useEffect(() => {
+    if (isLocalWebRTCConnected && isRemoteWebRTCReadyForTimer && !isTimerStarted && webViewRef.current) {
+      console.log('[ASTROLOGER-APP] Both clients ready, starting timer');
+      
+      // Tell the WebView to start the timer
+      webViewRef.current.postMessage(JSON.stringify({
+        type: 'start_the_timer'
+      }));
+      
+      setIsTimerStarted(true);
+    }
+  }, [isLocalWebRTCConnected, isRemoteWebRTCReadyForTimer, isTimerStarted]);
 
   if (loading) {
     return (

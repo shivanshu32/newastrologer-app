@@ -112,6 +112,8 @@ const BookingsScreen = ({ navigation }) => {
       navigation.navigate('Chat', { bookingId: booking.id });
     } else if (booking.type === 'video') {
       navigation.navigate('VideoCall', { bookingId: booking.id });
+    } else if (booking.type === 'voice') {
+      navigation.navigate('VoiceCall', { bookingId: booking.id });
     }
   };
 
