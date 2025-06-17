@@ -88,8 +88,14 @@ const ChatScreen = ({ route, navigation }) => {
           // Set up message listener using socketService
           const cleanupMessageListener = socketService.listenForChatMessages(socket, (message) => {
             if (message.bookingId === bookingId) {
+              // IMPORTANT: Always use the original message.id sent by the server
+              // This ensures consistency between sender and receiver for read receipts
+              if (!message.id) {
+                console.error('Received message without ID, this may cause read receipt issues');
+              }
+              
               const newMessage = {
-                id: message.id || Date.now().toString(),
+                id: message.id, // Always use the original ID, no fallback to ensure consistency
                 senderId: message.senderId,
                 senderName: message.senderName,
                 text: message.text,
@@ -97,10 +103,12 @@ const ChatScreen = ({ route, navigation }) => {
                 status: 'sent' // Initial status is 'sent'
               };
               
+              // Add message from user to state
               setMessages(prevMessages => [...prevMessages, newMessage]);
               
               // If the message is from the user, mark it as read
               if (message.senderId !== user?.id) {
+                // Mark message as read
                 socketService.markMessageAsRead(socket, bookingId, newMessage.id);
               }
             }
@@ -110,17 +118,17 @@ const ChatScreen = ({ route, navigation }) => {
           const cleanupTypingListener = socketService.listenForTypingStatus(
             socket,
             (data) => {
-              console.log('[ASTROLOGER-APP] Received typing_started event:', data);
+              // Received typing started event
               if (data.bookingId === bookingId) {
                 setIsUserTyping(true);
-                console.log('[ASTROLOGER-APP] Set isUserTyping to true');
+                // Set user typing indicator to true
               }
             },
             (data) => {
-              console.log('[ASTROLOGER-APP] Received typing_stopped event:', data);
+              // Received typing stopped event
               if (data.bookingId === bookingId) {
                 setIsUserTyping(false);
-                console.log('[ASTROLOGER-APP] Set isUserTyping to false');
+                // Set user typing indicator to false
               }
             }
           );
@@ -129,15 +137,20 @@ const ChatScreen = ({ route, navigation }) => {
           const cleanupStatusListener = socketService.listenForMessageStatusUpdates(
             socket,
             (data) => {
-              console.log('[ASTROLOGER-APP] Received message_status_update:', data);
+              // Received message status update
               if (data.bookingId === bookingId) {
                 setMessages(prevMessages => {
-                  const updatedMessages = prevMessages.map(msg => 
-                    msg.id === data.messageId ? { ...msg, status: 'read' } : msg
-                  );
-                  console.log('[ASTROLOGER-APP] Updated message status to read for message:', data.messageId);
+                  const updatedMessages = prevMessages.map(msg => {
+                    if (msg.id === data.messageId) {
+                      // Update message status to read
+                      return { ...msg, status: 'read' };
+                    }
+                    return msg;
+                  });
+                  // Updated messages state
                   return updatedMessages;
                 });
+                // Updated message status to read
               }
             }
           );
@@ -201,6 +214,7 @@ const ChatScreen = ({ route, navigation }) => {
     const newMessage = {
       id: messageId,
       senderId: user?.id || 'astrologer',
+      sender: 'astrologer', // For backward compatibility
       senderName: user?.name || 'Astrologer',
       text: messageText,
       timestamp: new Date().toISOString(),
@@ -233,6 +247,7 @@ const ChatScreen = ({ route, navigation }) => {
           msg.id === messageId ? { ...msg, status: 'sent' } : msg
         )
       );
+      // Message sent, update status to sent
     } catch (error) {
       console.error('Failed to send message:', error);
       Alert.alert('Error', 'Failed to send message. Please try again.');
@@ -245,12 +260,12 @@ const ChatScreen = ({ route, navigation }) => {
     
     // Only emit typing events if the session is active
     if (!sessionActive || !socket) {
-      console.log('[ASTROLOGER-APP] Not sending typing event - session inactive or socket null');
+      // Not sending typing event - session inactive or socket null
       return;
     }
     
     // Send typing_started event
-    console.log('[ASTROLOGER-APP] Emitting typing_started event for bookingId:', bookingId);
+    // Emit typing started event
     socketService.sendTypingStatus(socket, bookingId, true);
     
     // Clear any existing timeout
@@ -261,7 +276,7 @@ const ChatScreen = ({ route, navigation }) => {
     // Set a new timeout to emit typing_stopped after 1 second of inactivity
     typingTimeoutRef.current = setTimeout(() => {
       if (socket && isConnected) {
-        console.log('[ASTROLOGER-APP] Emitting typing_stopped event after timeout for bookingId:', bookingId);
+        // Emit typing stopped event after timeout
         socketService.sendTypingStatus(socket, bookingId, false);
       }
     }, 1000);
@@ -332,12 +347,14 @@ const ChatScreen = ({ route, navigation }) => {
   };
 
   const renderMessage = ({ item }) => {
-    // Check if the message is from the user (not from the astrologer)
-    const isUser = item.senderId !== user?.id;
+    // More reliable check for user messages
+    const isUser = item.senderId !== user?.id && item.sender !== 'astrologer';
     
     // Render status indicators for astrologer messages
     const renderStatusIndicator = () => {
       if (isUser) return null; // Only show status for astrologer's messages
+      
+      // Render message with status
       
       switch (item.status) {
         case 'sending':

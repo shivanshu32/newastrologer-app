@@ -191,43 +191,54 @@ export const listenForStatusUpdates = (socket, onStatusUpdate) => {
 };
 
 /**
- * Send a chat message in a consultation
+ * Send a chat message
  * @param {Object} socket - Socket.io instance
- * @param {String} roomId - Room ID
- * @param {String} message - Message content
- * @param {String} messageType - Message type (text, image, etc.)
- * @returns {Promise<Object>} - Promise that resolves with response
+ * @param {string} bookingId - Booking ID
+ * @param {string} text - Message text
+ * @param {string} senderId - Sender ID
+ * @param {string} senderName - Sender name
+ * @param {string} messageId - Message ID for tracking read receipts
+ * @returns {Promise<Object>} - Promise resolving to message object
  */
-export const sendChatMessage = (socket, bookingId, message, senderId, senderName, messageId) => {
-  if (!socket || !socket.connected) {
-    return Promise.reject(new Error('Socket not connected'));
-  }
-  
+export const sendChatMessage = (socket, bookingId, text, senderId, senderName, messageId) => {
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      reject(new Error('Send message timeout'));
-    }, RESPONSE_TIMEOUT);
+    if (!socket || !socket.connected) {
+      console.error('sendChatMessage: Socket not connected');
+      reject(new Error('Socket not connected'));
+      return;
+    }
     
-    // Use server-compatible payload structure
-    const messageData = {
-      roomId: bookingId,
-      content: message,
-      type: 'text',
-      timestamp: new Date().toISOString(),
-      id: messageId || Date.now().toString(), // Include messageId for tracking read receipts
-      sender: senderId,
-      senderName: senderName
-    };
-    
-    socket.emit('send_message', messageData, (response) => {
-      clearTimeout(timeout);
-      
-      if (response && response.success) {
-        resolve(response);
-      } else {
-        reject(new Error(response ? response.message : 'Failed to send message'));
+    try {
+      // Ensure we have a valid messageId
+      if (!messageId) {
+        console.error('Missing messageId when sending message');
+        messageId = Date.now().toString();
       }
-    });
+      
+      // Create message payload
+      const messagePayload = {
+        roomId: bookingId,
+        content: text,
+        senderId,
+        senderName,
+        messageId, // Include messageId for tracking read receipts
+        id: messageId, // IMPORTANT: Also include as 'id' to ensure consistency
+        timestamp: new Date().toISOString()
+      };
+      
+      // Send message to server
+      socket.emit('send_message', messagePayload, (response) => {
+        if (response && response.success) {
+          // Message sent successfully
+          resolve(response.message);
+        } else {
+          reject(new Error(response?.message || 'Failed to send message'));
+        }
+      });
+    } catch (error) {
+      console.error('Error in sendChatMessage:', error);
+      reject(error);
+    }
   });
 };
 
@@ -245,9 +256,14 @@ export const listenForChatMessages = (socket, onChatMessage) => {
   
   // Listen for receive_message event from server and transform payload to expected format
   const messageHandler = (serverMessage) => {
+    // Ensure message has an ID to maintain consistency across apps
+    if (!serverMessage.id) {
+      console.error('Received message without ID');
+    }
+    
     // Transform server message format to client format
     const clientMessage = {
-      id: serverMessage.id || Date.now().toString(),
+      id: serverMessage.id, // Always use the original ID, no fallback to ensure consistency
       senderId: serverMessage.sender,
       senderName: serverMessage.senderRole === 'user' ? 'User' : 'Astrologer',
       text: serverMessage.content,
@@ -255,6 +271,7 @@ export const listenForChatMessages = (socket, onChatMessage) => {
       bookingId: serverMessage.roomId
     };
     
+    console.log('[ASTROLOGER-APP socketService] Transformed message with ID:', clientMessage.id);
     onChatMessage(clientMessage);
   };
   
