@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, BackHandler, Alert } from 'react-native';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { useSocket } from '../context/SocketContext';
@@ -13,6 +13,7 @@ const WaitingRoomScreen = () => {
   const route = useRoute();
   const { socket, isConnected } = useSocket();
   const [waitingTime, setWaitingTime] = useState(0);
+  const hasNavigated = useRef(false); // Use useRef for immediate updates
   
   // Extract booking details from route params
   const { bookingId, bookingDetails } = route.params || {};
@@ -46,19 +47,20 @@ const WaitingRoomScreen = () => {
       }
     });
 
-    // Navigation guard to prevent multiple rapid navigations
-    let hasNavigated = false;
-
     const handleUserJoined = (data) => {
       console.log('🔍 [ASTROLOGER-APP] handleUserJoined called with data:', JSON.stringify(data));
       console.log('🔍 [ASTROLOGER-APP] Current booking ID:', bookingId);
       console.log('🔍 [ASTROLOGER-APP] Current booking details:', JSON.stringify(bookingDetails));
       
-      // Prevent multiple navigations
-      if (hasNavigated) {
+      // Prevent multiple navigations using ref for immediate check
+      if (hasNavigated.current) {
         console.log('⚠️ [ASTROLOGER-APP] Navigation already occurred, ignoring duplicate event');
         return;
       }
+      
+      // Set navigation guard immediately
+      hasNavigated.current = true;
+      console.log('🔒 [ASTROLOGER-APP] Navigation guard set, preventing further navigation');
       
       // Determine consultation type - log each potential source
       console.log('🔍 [ASTROLOGER-APP] data.type:', data?.type);
@@ -81,38 +83,48 @@ const WaitingRoomScreen = () => {
         sessionId: data.sessionId || bookingDetails?.sessionId
       };
       
-      const navigationParams = {
+      console.log('🔍 [ASTROLOGER-APP] Navigation params:', {
         booking: bookingDetails,
         bookingId: bookingId,
         roomId: data.roomId,
         sessionId: enhancedBookingDetails.sessionId || bookingDetails?.sessionId || data.sessionId,
-      };
+        userJoinData: data // Pass the entire user join event data
+      });
       
-      console.log('🔍 [ASTROLOGER-APP] Navigation params:', JSON.stringify(navigationParams));
-      
-      // Set navigation guard
-      hasNavigated = true;
-      
-      if (isVideoCall) {
-        console.log('✅ [ASTROLOGER-APP] Navigating to video consultation');
-        navigation.navigate('VideoCall', navigationParams);
-      } else if (isVoiceCall) {
+      if (isVoiceCall) {
         console.log('✅ [ASTROLOGER-APP] Navigating to voice consultation');
-        try {
-          navigation.navigate('VoiceCall', navigationParams);
-          console.log('✅ [ASTROLOGER-APP] VoiceCall navigation initiated successfully');
-        } catch (error) {
-          console.error('❌ [ASTROLOGER-APP] Error navigating to VoiceCall:', error);
-        }
+        navigation.navigate('VoiceCall', {
+          booking: bookingDetails,
+          bookingId: bookingId,
+          roomId: data.roomId,
+          sessionId: data.sessionId,
+          userJoinData: data // Pass the user join data to VoiceCallScreen
+        });
+        console.log('✅ [ASTROLOGER-APP] VoiceCall navigation initiated successfully');
+      } else if (isVideoCall) {
+        console.log('✅ [ASTROLOGER-APP] Navigating to video consultation');
+        navigation.navigate('VideoCall', {
+          booking: bookingDetails,
+          bookingId: bookingId,
+          roomId: data.roomId,
+          sessionId: data.sessionId,
+          userJoinData: data // Pass the user join data to VideoCallScreen as well
+        });
+        console.log('✅ [ASTROLOGER-APP] VideoCall navigation initiated successfully');
       } else {
         console.log('✅ [ASTROLOGER-APP] Navigating to chat consultation');
-        navigation.navigate('Chat', navigationParams);
+        navigation.navigate('Chat', {
+          booking: bookingDetails,
+          bookingId: bookingId,
+          roomId: data.roomId,
+          sessionId: enhancedBookingDetails.sessionId || bookingDetails?.sessionId || data.sessionId,
+        });
       }
     };
 
     // Listen for user joining the consultation
     console.log('🔄 [ASTROLOGER-APP] Setting up socket listener for "user_joined_consultation"');
-    socket.on('user_joined_consultation', (data) => {
+    const userJoinedHandler = (data) => {
       console.log('📩 [ASTROLOGER-APP] Received "user_joined_consultation" event with data:', JSON.stringify(data));
       console.log('🔍 [ASTROLOGER-APP] Expected bookingId:', bookingId);
       console.log('🔍 [ASTROLOGER-APP] Received bookingId:', data?.bookingId);
@@ -121,13 +133,15 @@ const WaitingRoomScreen = () => {
         console.log('✅ [ASTROLOGER-APP] BookingId matches, calling handleUserJoined');
         handleUserJoined(data);
       } else {
-        console.log('❌ [ASTROLOGER-APP] BookingId does not match or data is missing, ignoring event');
+        console.log('❌ [ASTROLOGER-APP] BookingId mismatch, ignoring event');
       }
-    });
+    };
     
+    socket.on('user_joined_consultation', userJoinedHandler);
+
     // Also listen for the alternate event name as a fallback
     console.log('🔄 [ASTROLOGER-APP] Setting up socket listener for "join_consultation"');
-    socket.on('join_consultation', (data) => {
+    const joinConsultationHandler = (data) => {
       console.log('📩 [ASTROLOGER-APP] Received "join_consultation" event with data:', JSON.stringify(data));
       console.log('🔍 [ASTROLOGER-APP] Expected bookingId:', bookingId);
       console.log('🔍 [ASTROLOGER-APP] Received bookingId:', data?.bookingId);
@@ -136,26 +150,27 @@ const WaitingRoomScreen = () => {
         console.log('✅ [ASTROLOGER-APP] BookingId matches, calling handleUserJoined');
         handleUserJoined(data);
       } else {
-        console.log('❌ [ASTROLOGER-APP] BookingId does not match or data is missing, ignoring event');
+        console.log('❌ [ASTROLOGER-APP] BookingId mismatch, ignoring event');
       }
-    });
+    };
     
-    // Debug socket connection status
-    console.log('🔌 [ASTROLOGER-APP] Socket connected status:', socket?.connected);
-    console.log('🔌 [ASTROLOGER-APP] Socket ID:', socket?.id);
-    
+    socket.on('join_consultation', joinConsultationHandler);
+
     // Listen for direct notifications
-    socket.on('direct_astrologer_notification', (data) => {
+    const directNotificationHandler = (data) => {
       if (data && data.bookingId === bookingId) {
         handleUserJoined(data);
       }
-    });
+    };
+    
+    socket.on('direct_astrologer_notification', directNotificationHandler);
 
-    // Clean up listeners on unmount
+    // Cleanup function to remove listeners
     return () => {
-      socket.off('user_joined_consultation');
-      socket.off('join_consultation');
-      socket.off('direct_astrologer_notification');
+      console.log('🧹 [ASTROLOGER-APP] Cleaning up socket listeners');
+      socket.off('user_joined_consultation', userJoinedHandler);
+      socket.off('join_consultation', joinConsultationHandler);
+      socket.off('direct_astrologer_notification', directNotificationHandler);
       
       // Leave the room when component unmounts
       socket.emit('leave_room', { bookingId });
