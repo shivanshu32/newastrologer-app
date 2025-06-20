@@ -5,7 +5,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from './AuthContext';
 
 // Socket server URL - extract base URL from API_URL in api.js
-const SOCKET_SERVER_URL = 'http://192.168.29.107:5000';
+//const SOCKET_SERVER_URL = 'http://192.168.29.107:5000';
+
+const SOCKET_SERVER_URL = 'http://3.110.171.85';
+
 
 // Create context
 const SocketContext = createContext(null);
