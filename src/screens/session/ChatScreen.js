@@ -19,12 +19,13 @@ import { bookingsAPI, sessionsAPI } from '../../services/api';
 import * as socketService from '../../services/socketService';
 
 const ChatScreen = ({ route, navigation }) => {
-  const { bookingId } = route.params || {};
+  const { bookingId, sessionId: routeSessionId, userJoinData } = route.params || {};
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
   const [loading, setLoading] = useState(true);
   const [sessionActive, setSessionActive] = useState(false);
   const [sessionTime, setSessionTime] = useState(0);
+  const [sessionId, setSessionId] = useState(routeSessionId || userJoinData?.bookingDetails?.sessionId || null);
   const [sessionEnded, setSessionEnded] = useState(false);
   const [booking, setBooking] = useState(null);
   const [isUserTyping, setIsUserTyping] = useState(false);
@@ -43,6 +44,10 @@ const ChatScreen = ({ route, navigation }) => {
   }, []);
 
   useEffect(() => {
+    console.log('[ASTROLOGER-APP] SessionId state updated:', sessionId);
+  }, [sessionId]);
+
+  useEffect(() => {
     return () => {
       if (timerRef.current) {
         clearInterval(timerRef.current);
@@ -57,6 +62,7 @@ const ChatScreen = ({ route, navigation }) => {
         
         socket.off('timer');
         socket.off('session_end');
+        socket.off('consultation_ended');
       }
     };
   }, [socket]);
@@ -182,7 +188,15 @@ const ChatScreen = ({ route, navigation }) => {
             }
           });
           
+          // Listen for consultation ended event
+          socket.on('consultation_ended', (data) => {
+            if (data.bookingId === bookingId) {
+              handleConsultationEnded(data);
+            }
+          });
+          
           setSessionActive(true);
+          setSessionId(response.sessionId);
           
           // Store cleanup function
           messageListenerCleanupRef.current = cleanupMessageListener;
@@ -195,8 +209,8 @@ const ChatScreen = ({ route, navigation }) => {
       // Notify server that astrologer has joined and session can start
       socket.emit('astrologer_joined', { bookingId });
       
-      // Explicitly request timer start
-      socket.emit('start_session_timer', { bookingId });
+      // Explicitly request timer start with sessionId
+      socket.emit('start_session_timer', { bookingId, sessionId });
     }
   };
 
@@ -304,11 +318,11 @@ const ChatScreen = ({ route, navigation }) => {
     try {
       // Emit end_session event to socket
       if (socket && isConnected) {
-        socket.emit('end_session', { bookingId });
+        socket.emit('end_session', { sessionId: sessionId, bookingId });
       }
       
-      // Call API to end the session directly with the bookingId
-      await sessionsAPI.end(bookingId);
+      // Call API to end the session directly with the sessionId
+      await sessionsAPI.end(sessionId);
       
       // Clean up any timers
       if (timerRef.current) clearInterval(timerRef.current);
@@ -329,6 +343,31 @@ const ChatScreen = ({ route, navigation }) => {
       console.error('Error ending session:', error);
       Alert.alert('Error', 'Failed to end session. Please try again.');
     }
+  };
+
+  const handleConsultationEnded = (data) => {
+    // Handle consultation ended event
+    console.log('Consultation ended:', data);
+    setSessionActive(false);
+    setSessionEnded(true);
+    
+    // Clean up any timers
+    if (timerRef.current) clearInterval(timerRef.current);
+    
+    // Show alert to astrologer
+    Alert.alert(
+      'Consultation Ended',
+      `The consultation has ended.\n\nSession Duration: ${data.sessionData?.duration || 0} minutes\nTotal Amount: ₹${data.sessionData?.totalAmount || 0}`,
+      [
+        {
+          text: 'Back to Home',
+          onPress: () => {
+            navigation.navigate('Home');
+          }
+        }
+      ],
+      { cancelable: false }
+    );
   };
 
   const formatTime = (seconds) => {

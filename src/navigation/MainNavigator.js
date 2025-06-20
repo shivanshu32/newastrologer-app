@@ -1,9 +1,19 @@
-import React from 'react';
+import React, { useContext } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
+import { View, Text } from 'react-native';
+import { useAuth } from '../context/AuthContext';
+import { SocketContext } from '../context/SocketContext';
 import navigationConfig from './NavigationConfig';
 import BookingRequestHandler from '../components/BookingRequestHandler';
+
+// Temporary test component
+const TestHomeScreen = () => (
+  <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+    <Text>Test Home Screen</Text>
+  </View>
+);
 
 // Import screens
 import HomeScreen from '../screens/main/HomeScreen';
@@ -11,7 +21,7 @@ import BookingsScreen from '../screens/main/BookingsScreen';
 import WalletScreen from '../screens/main/WalletScreen';
 import ProfileScreen from '../screens/main/ProfileScreen';
 import ChatScreen from '../screens/session/ChatScreen';
-import VideoCallScreen from '../screens/session/VideoCallScreen';
+import VideoCallScreen from '../screens/VideoConsultationScreen';
 import VoiceCallScreen from '../screens/VoiceCallScreen';
 import RatingScreen from '../screens/session/RatingScreen';
 import AvailabilityScreen from '../screens/main/AvailabilityScreen';
@@ -30,10 +40,10 @@ const HomeStack = () => {
       }}
     >
       <Stack.Screen name="HomeMain" component={HomeScreen} />
-      <Stack.Screen name="Chat" component={ChatScreen} />
-      <Stack.Screen name="VideoCall" component={VideoCallScreen} />
-      <Stack.Screen name="VoiceCall" component={VoiceCallScreen} />
-      <Stack.Screen name="Rating" component={RatingScreen} />
+      <Stack.Screen name="HomeChat" component={ChatScreen} />
+      <Stack.Screen name="HomeVideoCall" component={VideoCallScreen} />
+      <Stack.Screen name="HomeVoiceCall" component={VoiceCallScreen} />
+      <Stack.Screen name="HomeRating" component={RatingScreen} />
       <Stack.Screen name="Availability" component={AvailabilityScreen} />
     </Stack.Navigator>
   );
@@ -49,10 +59,10 @@ const BookingsStack = () => {
       }}
     >
       <Stack.Screen name="BookingsMain" component={BookingsScreen} />
-      <Stack.Screen name="Chat" component={ChatScreen} />
-      <Stack.Screen name="VideoCall" component={VideoCallScreen} />
-      <Stack.Screen name="VoiceCall" component={VoiceCallScreen} />
-      <Stack.Screen name="Rating" component={RatingScreen} />
+      <Stack.Screen name="BookingsChat" component={ChatScreen} />
+      <Stack.Screen name="BookingsVideoCall" component={VideoCallScreen} />
+      <Stack.Screen name="BookingsVoiceCall" component={VoiceCallScreen} />
+      <Stack.Screen name="BookingsRating" component={RatingScreen} />
       <Stack.Screen name="WaitingRoom" component={WaitingRoomScreen} />
     </Stack.Navigator>
   );

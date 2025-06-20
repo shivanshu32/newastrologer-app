@@ -35,10 +35,22 @@ export const SocketProvider = ({ children }) => {
       
       // Get authentication data
       const token = await AsyncStorage.getItem('astrologerToken');
-      const astrologerId = await AsyncStorage.getItem('astrologerId');
+      let astrologerId = await AsyncStorage.getItem('astrologerId');
+      
+      // If astrologerId is not found directly, try getting it from astrologerData
+      if (!astrologerId) {
+        const astrologerData = await AsyncStorage.getItem('astrologerData');
+        if (astrologerData) {
+          const parsedAstrologerData = JSON.parse(astrologerData);
+          astrologerId = parsedAstrologerData._id || parsedAstrologerData.id;
+          console.log('SocketContext: Extracted astrologerId from astrologerData:', astrologerId);
+        }
+      }
+      
+      console.log('SocketContext: Authentication data - token exists:', !!token, 'astrologerId:', astrologerId);
       
       if (!token || !astrologerId) {
-        console.error('Token or astrologerId not found. Cannot initialize socket.');
+        console.log('SocketContext: No user token, cleaning up socket if any');
         setIsConnecting(false);
         return;
       }
@@ -248,3 +260,6 @@ export const useSocket = () => {
   }
   return context;
 };
+
+// Export the context itself for direct usage
+export { SocketContext };

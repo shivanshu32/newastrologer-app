@@ -109,11 +109,11 @@ const BookingsScreen = ({ navigation }) => {
 
   const handleStartSession = (booking) => {
     if (booking.type === 'chat') {
-      navigation.navigate('Chat', { bookingId: booking.id });
+      navigation.navigate('BookingsChat', { bookingId: booking.id });
     } else if (booking.type === 'video') {
-      navigation.navigate('VideoCall', { bookingId: booking.id });
+      navigation.navigate('BookingsVideoCall', { bookingId: booking.id });
     } else if (booking.type === 'voice') {
-      navigation.navigate('VoiceCall', { bookingId: booking.id });
+      navigation.navigate('BookingsVoiceCall', { bookingId: booking.id });
     }
   };
 

@@ -93,7 +93,7 @@ const WaitingRoomScreen = () => {
       
       if (isVoiceCall) {
         console.log('✅ [ASTROLOGER-APP] Navigating to voice consultation');
-        navigation.navigate('VoiceCall', {
+        navigation.navigate('BookingsVoiceCall', {
           booking: bookingDetails,
           bookingId: bookingId,
           roomId: data.roomId,
@@ -103,7 +103,7 @@ const WaitingRoomScreen = () => {
         console.log('✅ [ASTROLOGER-APP] VoiceCall navigation initiated successfully');
       } else if (isVideoCall) {
         console.log('✅ [ASTROLOGER-APP] Navigating to video consultation');
-        navigation.navigate('VideoCall', {
+        navigation.navigate('BookingsVideoCall', {
           booking: bookingDetails,
           bookingId: bookingId,
           roomId: data.roomId,
@@ -113,7 +113,7 @@ const WaitingRoomScreen = () => {
         console.log('✅ [ASTROLOGER-APP] VideoCall navigation initiated successfully');
       } else {
         console.log('✅ [ASTROLOGER-APP] Navigating to chat consultation');
-        navigation.navigate('Chat', {
+        navigation.navigate('BookingsChat', {
           booking: bookingDetails,
           bookingId: bookingId,
           roomId: data.roomId,

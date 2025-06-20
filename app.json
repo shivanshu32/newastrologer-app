@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Jyotish Call - Astrologer",
-    "slug": "jyotish-call-astrologer",
+    "slug": "jyotishcall-astrologer-app",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon-square.png",
@@ -39,8 +39,9 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "your-project-id"
+        "projectId": "df7c8590-c046-4d34-bacb-908b2207ea73"
       }
-    }
+    },
+    "owner": "shivanshu32"
   }
 }

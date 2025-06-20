@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import {
   StyleSheet,
   View,
@@ -12,52 +12,101 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
+import { bookingsAPI } from '../../services/api';
+import { listenForBookingRequests, respondToBookingRequest } from '../../services/socketService';
+import { SocketContext } from '../../context/SocketContext';
 
 const HomeScreen = ({ navigation }) => {
   const [pendingBookings, setPendingBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [statusLoading, setStatusLoading] = useState(false);
   const { user, updateStatus } = useAuth();
+  const { socket, isConnected } = useContext(SocketContext);
   
   useEffect(() => {
     fetchPendingBookings();
-  }, []);
+    
+    // Set up socket listener for real-time booking requests
+    let cleanup;
+    if (socket && isConnected) {
+      console.log('Socket connected, setting up booking request listener');
+      cleanup = listenForBookingRequests(socket, (newBooking) => {
+        console.log('Received new booking request:', newBooking);
+        
+        // Validate booking data before processing
+        if (!newBooking) {
+          console.error('Received null or undefined booking data');
+          return;
+        }
+        
+        try {
+          // Create a sanitized booking object with all required fields and fallbacks
+          const sanitizedBooking = {
+            // Use optional chaining and nullish coalescing for safety
+            id: newBooking._id || newBooking.id || `temp-${Date.now()}`,
+            userId: (newBooking.user && newBooking.user._id) || newBooking.userId || 'unknown',
+            userName: (newBooking.user && newBooking.user.name) || newBooking.userName || 'User',
+            userImage: (newBooking.user && newBooking.user.profileImage) || 'https://via.placeholder.com/100',
+            type: newBooking.type || 'chat',
+            status: newBooking.status || 'pending',
+            requestedTime: newBooking.createdAt || new Date().toISOString()
+          };
+          
+          // Add the sanitized booking to the pending bookings list
+          setPendingBookings(prevBookings => [...prevBookings, sanitizedBooking]);
+        } catch (error) {
+          console.error('Error processing booking request:', error);
+        }
+      });
+    }
+    
+    return () => {
+      if (cleanup) cleanup();
+    };
+  }, [socket, isConnected]);
 
   const fetchPendingBookings = async () => {
     try {
-      // In a real app, this would call your backend API
-      // const response = await axios.get(`${API_URL}/astrologer/bookings/pending`);
-      // setPendingBookings(response.data);
+      setLoading(true);
       
-      // Simulate API call with dummy data
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Call backend API to fetch pending bookings
+      const response = await bookingsAPI.getAll('pending');
       
-      const dummyBookings = [
-        {
-          id: '1',
-          userId: '101',
-          userName: 'Rahul Sharma',
-          userImage: 'https://via.placeholder.com/100',
-          type: 'chat',
-          status: 'pending',
-          requestedTime: new Date().toISOString(),
-        },
-        {
-          id: '2',
-          userId: '102',
-          userName: 'Priya Patel',
-          userImage: 'https://via.placeholder.com/100',
-          type: 'video',
-          status: 'pending',
-          requestedTime: new Date(Date.now() - 600000).toISOString(), // 10 minutes ago
-        },
-      ];
+      if (response.data && response.data.data && Array.isArray(response.data.data)) {
+        // Transform the data to match the expected format with robust validation
+        const bookings = response.data.data.map(booking => {
+          // Skip invalid bookings
+          if (!booking) return null;
+          
+          try {
+            return {
+              id: booking._id || `temp-${Date.now()}`,
+              userId: (booking.user && booking.user._id) || 'unknown',
+              userName: (booking.user && booking.user.name) || 'User',
+              userImage: (booking.user && booking.user.profileImage) || 'https://via.placeholder.com/100',
+              type: booking.type || 'chat',
+              status: booking.status || 'pending',
+              requestedTime: booking.createdAt || new Date().toISOString(),
+            };
+          } catch (err) {
+            console.error('Error processing booking item:', err);
+            return null;
+          }
+        }).filter(booking => booking !== null); // Remove any null entries
+        
+        setPendingBookings(bookings);
+      } else {
+        // If no bookings found or invalid data structure, set empty array
+        console.log('No valid bookings data found in response');
+        setPendingBookings([]);
+      }
       
-      setPendingBookings(dummyBookings);
       setLoading(false);
     } catch (error) {
-      console.log('Error fetching pending bookings:', error);
+      console.error('Error fetching pending bookings:', error);
       setLoading(false);
+      // In case of error, set empty bookings array
+      setPendingBookings([]);
     }
   };
 
@@ -80,11 +129,18 @@ const HomeScreen = ({ navigation }) => {
     try {
       setLoading(true);
       
-      // In a real app, this would call your backend API
-      // await axios.post(`${API_URL}/bookings/${booking.id}/accept`);
+      // Call the API to accept the booking
+      await bookingsAPI.accept(booking.id);
       
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // If socket is available, also respond via socket for real-time updates
+      if (socket) {
+        try {
+          await respondToBookingRequest(socket, booking.id, true);
+        } catch (socketError) {
+          console.log('Socket error when accepting booking:', socketError);
+          // Continue even if socket fails, as we've already updated via API
+        }
+      }
       
       // Remove the booking from the list
       setPendingBookings(prevBookings => 
@@ -95,11 +151,11 @@ const HomeScreen = ({ navigation }) => {
       
       // Navigate to the appropriate screen based on booking type
       if (booking.type === 'chat') {
-        navigation.navigate('Chat', { bookingId: booking.id });
+        navigation.navigate('HomeChat', { bookingId: booking.id });
       } else if (booking.type === 'video') {
-        navigation.navigate('VideoCall', { bookingId: booking.id });
+        navigation.navigate('HomeVideoCall', { bookingId: booking.id });
       } else if (booking.type === 'voice') {
-        navigation.navigate('VoiceCall', { bookingId: booking.id });
+        navigation.navigate('HomeVoiceCall', { bookingId: booking.id });
       }
     } catch (error) {
       console.log('Error accepting booking:', error);
@@ -112,11 +168,18 @@ const HomeScreen = ({ navigation }) => {
     try {
       setLoading(true);
       
-      // In a real app, this would call your backend API
-      // await axios.post(`${API_URL}/bookings/${booking.id}/reject`);
+      // Call the API to reject the booking
+      await bookingsAPI.reject(booking.id);
       
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // If socket is available, also respond via socket for real-time updates
+      if (socket) {
+        try {
+          await respondToBookingRequest(socket, booking.id, false);
+        } catch (socketError) {
+          console.log('Socket error when rejecting booking:', socketError);
+          // Continue even if socket fails, as we've already updated via API
+        }
+      }
       
       // Remove the booking from the list
       setPendingBookings(prevBookings => 
@@ -147,7 +210,11 @@ const HomeScreen = ({ navigation }) => {
               <Text style={styles.userName}>{item.userName}</Text>
               <View style={styles.bookingType}>
                 <Ionicons
-                  name={item.type === 'chat' ? 'chatbubble-outline' : 'videocam-outline'}
+                  name={
+                    item.type === 'chat' ? 'chatbubble-outline' : 
+                    item.type === 'video' ? 'videocam-outline' : 
+                    item.type === 'voice' ? 'call-outline' : 'help-circle-outline'
+                  }
                   size={14}
                   color="#666"
                 />

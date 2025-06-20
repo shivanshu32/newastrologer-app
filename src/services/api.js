@@ -40,7 +40,7 @@ export const availabilityAPI = {
 
 // Bookings API
 export const bookingsAPI = {
-  getAll: (status) => API.get('/bookings/astrologer', { params: { status } }),
+  getAll: (status) => API.get('/bookings', { params: { status, role: 'astrologer' } }),
   getById: (id) => API.get(`/bookings/${id}`),
   accept: (id) => API.put(`/bookings/${id}/accept`),
   reject: (id) => API.put(`/bookings/${id}/reject`),
