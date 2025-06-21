@@ -1,6 +1,7 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
+import { Alert } from 'react-native';
 import { authAPI } from '../services/api';
 import { initSocket } from '../services/socketService';
 
@@ -54,6 +55,15 @@ export const AuthProvider = ({ children }) => {
       if (!response.data.success) {
         console.log('OTP request unsuccessful:', response.data.message);
         throw new Error(response.data.message || 'Failed to send OTP');
+      }
+      
+      // Display OTP in alert - Backend returns OTP in response.data.data.otp
+      if (response.data.data && response.data.data.otp) {
+        Alert.alert(
+          'OTP Generated', 
+          `Your OTP is: ${response.data.data.otp}`,
+          [{ text: 'OK' }]
+        );
       }
       
       console.log('OTP request successful');

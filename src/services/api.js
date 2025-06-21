@@ -1,11 +1,13 @@
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// API URL
-//const API_URL = 'http://192.168.29.107:5000/api/v1';
+// API URL Configuration - Comment/Uncomment as needed
+// Local Development (commented out for production)
+// const API_URL = 'http://192.168.29.107:5000/api/v1';
 
-const API_URL = 'http://3.110.171.85/api/v1';
-
+// Production - New backend URL
+const API_URL = 'https://jyotishcallbackend-2uxrv.ondigitalocean.app/api/v1';
+// Old production URL: const API_URL = 'http://3.110.171.85/api/v1';
 
 // Create axios instance
 const API = axios.create({
