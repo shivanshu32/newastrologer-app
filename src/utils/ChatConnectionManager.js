@@ -188,8 +188,21 @@ class ChatConnectionManager {
     });
 
     this.socket.on('consultation_ended', (data) => {
+      console.log('🔴 [ASTROLOGER-APP] Consultation ended event received:', data);
+      console.log('🔴 [ASTROLOGER-APP] Current booking ID:', this.currentBookingId);
+      console.log('🔴 [ASTROLOGER-APP] Event booking ID:', data.bookingId);
+      
       if (data.bookingId === this.currentBookingId) {
-        this.notifyStatusUpdate({ type: 'session_end', ...data });
+        console.log('🔴 [ASTROLOGER-APP] Processing consultation end - ended by:', data.endedBy);
+        this.notifyConnectionStatus('consultation_ended', `Session ended by ${data.endedBy}`);
+        this.notifyStatusUpdate({ 
+          type: 'consultation_ended', 
+          data,
+          endedBy: data.endedBy,
+          sessionData: data.sessionData
+        });
+      } else {
+        console.log('🔴 [ASTROLOGER-APP] Consultation ended event ignored - booking ID mismatch');
       }
     });
 
@@ -363,10 +376,11 @@ class ChatConnectionManager {
    */
   sendTypingStatus(isTyping) {
     if (this.isConnected && this.socket) {
-      this.socket.emit(isTyping ? 'typing_start' : 'typing_stop', {
+      this.socket.emit(isTyping ? 'typing_started' : 'typing_stopped', {
         bookingId: this.currentBookingId,
         astrologerId: this.currentAstrologerId
       });
+      console.log(`[ChatConnectionManager] Sent ${isTyping ? 'typing_started' : 'typing_stopped'} event for booking ${this.currentBookingId}`);
     }
   }
 

@@ -148,12 +148,29 @@ const EnhancedChatScreen = ({ route, navigation }) => {
     }
   }, [astrologerId]);
 
-  // Handle typing status
+  // Handle typing status updates
   const handleTypingStatus = useCallback((isTyping, data) => {
-    if (data.userId && data.userId !== astrologerId) {
-      setUserTyping(isTyping);
+    console.log('🔴 [ASTROLOGER-APP] Typing status:', { isTyping, data });
+    setUserTyping(isTyping);
+  }, []);
+
+  // Handle typing input
+  const handleTypingInput = useCallback((text) => {
+    setNewMessage(text);
+    
+    // Send typing indicator
+    if (chatManagerRef.current) {
+      chatManagerRef.current.sendTypingStatus(true);
+      
+      // Clear typing indicator after 2 seconds
+      clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => {
+        if (chatManagerRef.current) {
+          chatManagerRef.current.sendTypingStatus(false);
+        }
+      }, 2000);
     }
-  }, [astrologerId]);
+  }, []);
 
   // Handle status updates (timer, session end, etc.)
   const handleStatusUpdate = useCallback((data) => {
@@ -202,6 +219,45 @@ const EnhancedChatScreen = ({ route, navigation }) => {
       // User joined the consultation
       console.log('🔴 [ASTROLOGER-APP] User joined consultation');
       setConnectionStatus('user_joined');
+    } else if (data.type === 'consultation_ended') {
+      console.log('🔴 [ASTROLOGER-APP] Consultation ended event received in handleStatusUpdate');
+      console.log('🔴 [ASTROLOGER-APP] Session ended by:', data.endedBy);
+      console.log('🔴 [ASTROLOGER-APP] Session data:', data.sessionData);
+      
+      // Clear session state
+      setSessionActive(false);
+      setSessionEnded(true);
+      setConnectionStatus('session_ended');
+      
+      // Clear timer
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+      
+      // Show alert with session summary and navigate back
+      const sessionData = data.sessionData || {};
+      const duration = sessionData.duration || 0;
+      const totalAmount = sessionData.totalAmount || 0;
+      
+      Alert.alert(
+        'Session Ended',
+        `The consultation has been ended by ${data.endedBy}.\n\nDuration: ${duration} minutes\nTotal Amount: ₹${totalAmount}`,
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              console.log('🔴 [ASTROLOGER-APP] Navigating back after session end');
+              // Navigate back to previous screen
+              if (navigation.canGoBack()) {
+                navigation.goBack();
+              } else {
+                navigation.navigate('Dashboard');
+              }
+            }
+          }
+        ],
+        { cancelable: false }
+      );
     }
   }, [navigation, sessionActive]);
 
@@ -285,31 +341,7 @@ const EnhancedChatScreen = ({ route, navigation }) => {
     }
   }, [newMessage, astrologerId, bookingId, sessionId]);
 
-  // Handle typing input
-  const handleTyping = useCallback((text) => {
-    setNewMessage(text);
-    
-    if (!chatManagerRef.current) return;
 
-    // Send typing start
-    if (!isTyping && text.length > 0) {
-      setIsTyping(true);
-      chatManagerRef.current.sendTypingStatus(true);
-    }
-
-    // Clear existing timeout
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-    }
-
-    // Set timeout to stop typing
-    typingTimeoutRef.current = setTimeout(() => {
-      if (isTyping) {
-        setIsTyping(false);
-        chatManagerRef.current?.sendTypingStatus(false);
-      }
-    }, 2000);
-  }, [isTyping]);
 
   // End session
   const handleEndSession = useCallback(() => {
@@ -375,34 +407,7 @@ const EnhancedChatScreen = ({ route, navigation }) => {
 
 
 
-  // Handle typing input and indicators
-  const handleTypingInput = useCallback((text) => {
-    setNewMessage(text);
-    
-    // Send typing indicator if we have an active connection
-    if (chatManagerRef.current && !sessionEnded) {
-      // Clear existing typing timer
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-      
-      // Send typing started event
-      if (text.length > 0 && !isTyping) {
-        setIsTyping(true);
-        chatManagerRef.current.sendTypingIndicator(bookingId, true);
-      }
-      
-      // Set timer to send typing stopped event after 2 seconds of inactivity
-      typingTimeoutRef.current = setTimeout(() => {
-        if (isTyping) {
-          setIsTyping(false);
-          if (chatManagerRef.current) {
-            chatManagerRef.current.sendTypingIndicator(bookingId, false);
-          }
-        }
-      }, 2000);
-    }
-  }, [bookingId, sessionEnded, isTyping]);
+
 
   // Render message item
   const renderMessage = ({ item }) => {
@@ -503,7 +508,7 @@ const EnhancedChatScreen = ({ route, navigation }) => {
         <TextInput
           style={styles.textInput}
           value={newMessage}
-          onChangeText={handleTyping}
+          onChangeText={handleTypingInput}
           placeholder="Type your message..."
           placeholderTextColor="#999"
           multiline
