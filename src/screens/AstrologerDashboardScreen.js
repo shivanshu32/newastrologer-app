@@ -13,7 +13,11 @@ import axios from 'axios';
 import { API_URL } from '../services/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import BookingRequestHandler from '../components/BookingRequestHandler';
-import Icon from 'react-native-vector-icons/MaterialIcons';
+import { getVectorIconsImport } from '../config/expoConfig';
+import { useSocket } from '../context/SocketContext';
+
+// Conditional import for Expo Go compatibility
+const Icon = getVectorIconsImport('MaterialIcons');
 
 /**
  * Main dashboard screen for astrologers
@@ -22,6 +26,7 @@ import Icon from 'react-native-vector-icons/MaterialIcons';
  */
 const AstrologerDashboardScreen = () => {
   const navigation = useNavigation();
+  const { socket, isConnected } = useSocket();
   
   const [astrologer, setAstrologer] = useState(null);
   const [isOnline, setIsOnline] = useState(false);
@@ -81,16 +86,56 @@ const AstrologerDashboardScreen = () => {
       
       const newStatus = !isOnline ? 'online' : 'offline';
       
-      // Update status on server
-      await axios.patch(`${API_URL}/api/astrologers/${astrologer._id}/status`, {
+      // Get auth token
+      const token = await AsyncStorage.getItem('token');
+      if (!token) {
+        throw new Error('Authentication token not found');
+      }
+      
+      // Update status on server with correct endpoint and auth
+      const response = await axios.put(`${API_URL}/api/v1/astrologers/update-status`, {
         status: newStatus
+      }, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
       });
       
+      console.log('Status updated successfully:', response.data);
+      
+      // Update local state
       setIsOnline(!isOnline);
+      
+      // Update astrologer object with new status
+      setAstrologer(prev => ({
+        ...prev,
+        status: newStatus,
+        lastActive: new Date().toISOString()
+      }));
+      
+      // Emit socket event for real-time status update to user-app
+      if (socket && isConnected) {
+        socket.emit('astrologer_status_changed', {
+          astrologerId: astrologer._id,
+          status: newStatus,
+          lastActive: new Date().toISOString()
+        });
+        console.log('Emitted astrologer_status_changed event:', {
+          astrologerId: astrologer._id,
+          status: newStatus
+        });
+      } else {
+        console.warn('Socket not connected, status change not broadcasted');
+      }
+      
       setStatusUpdating(false);
     } catch (error) {
-      console.error('Error updating status:', error);
+      console.error('Error updating status:', error.response?.data || error.message);
       setStatusUpdating(false);
+      
+      // Show error to user
+      alert('Failed to update status. Please try again.');
     }
   };
 

@@ -4,6 +4,7 @@ import axios from 'axios';
 import { Alert } from 'react-native';
 import { authAPI } from '../services/api';
 import { initSocket } from '../services/socketService';
+// import LogRocket from '@logrocket/react-native'; // Temporarily disabled due to build issues
 
 const AuthContext = createContext();
 
@@ -27,6 +28,20 @@ export const AuthProvider = ({ children }) => {
           // Ensure role field is present for astrologer app
           parsedUserData.role = 'astrologer';
           setUser(parsedUserData);
+          
+          // Identify user with LogRocket
+          try {
+            if (false) { // Temporarily disabled
+              // LogRocket.identify(parsedUserData._id || parsedUserData.id, {
+              //   name: parsedUserData.name,
+              //   email: parsedUserData.email,
+              //   role: 'astrologer'
+              // });
+              console.log('LogRocket identify disabled temporarily:', parsedUserData._id || parsedUserData.id);
+            }
+          } catch (error) {
+            console.warn('LogRocket identify failed:', error);
+          }
           
           // Set default auth header for axios
           axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
@@ -112,6 +127,20 @@ export const AuthProvider = ({ children }) => {
       console.log('userData.id:', userData.id);
       console.log('userData.role:', userData.role);
       
+      // Identify user with LogRocket
+      try {
+        if (false) { // Temporarily disabled
+          // LogRocket.identify(userData._id || userData.id, {
+          //   name: userData.name,
+          //   email: userData.email,
+          //   role: userData.role
+          // });
+          console.log('LogRocket identify disabled temporarily:', userData._id || userData.id);
+        }
+      } catch (error) {
+        console.warn('LogRocket identify failed:', error);
+      }
+      
       // Store auth data in AsyncStorage
       await AsyncStorage.setItem('astrologerToken', authToken);
       await AsyncStorage.setItem('astrologerId', userData._id);
@@ -173,6 +202,15 @@ export const AuthProvider = ({ children }) => {
       
       // In a real app, you might want to notify the backend
       // await axios.post('http://your-backend-url.com/api/v1/auth/logout');
+      
+      // Clear LogRocket session
+      try {
+        if (false) { // Temporarily disabled
+          // console.log('LogRocket session URL before logout:', LogRocket.sessionURL);
+        }
+      } catch (error) {
+        console.warn('LogRocket session access failed:', error);
+      }
       
       // Clear auth state
       await AsyncStorage.removeItem('astrologerToken');

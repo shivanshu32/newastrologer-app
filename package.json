@@ -16,11 +16,13 @@
     }
   },
   "dependencies": {
+    "@config-plugins/react-native-webrtc": "^12.0.0",
     "@react-native-async-storage/async-storage": "2.1.2",
     "@react-native-community/netinfo": "^11.4.1",
     "@react-navigation/bottom-tabs": "^6.6.1",
     "@react-navigation/native": "^6.1.18",
     "@react-navigation/native-stack": "^6.11.0",
+    "@sentry/react-native": "^6.16.0",
     "axios": "^1.9.0",
     "expo": "^53.0.12",
     "expo-constants": "~17.1.6",
@@ -33,6 +35,7 @@
     "react-native-gesture-handler": "~2.24.0",
     "react-native-safe-area-context": "5.4.0",
     "react-native-screens": "~4.11.1",
+    "react-native-webrtc": "^124.0.5",
     "react-native-webview": "13.13.5",
     "socket.io-client": "^4.8.1"
   },

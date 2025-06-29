@@ -6,88 +6,161 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
+  Alert,
+  RefreshControl,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const API_BASE_URL = 'https://jyotishcallbackend-2uxrv.ondigitalocean.app/api/v1';
 
 const WalletScreen = () => {
   const [transactions, setTransactions] = useState([]);
+  const [walletBalance, setWalletBalance] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState('all');
   const { user } = useAuth();
+
+  useEffect(() => {
+    fetchWalletData();
+  }, []);
 
   useEffect(() => {
     fetchTransactions();
   }, [activeTab]);
 
+  const fetchWalletData = async () => {
+    await Promise.all([
+      fetchWalletBalance(),
+      fetchTransactions()
+    ]);
+  };
+
+  const fetchWalletBalance = async () => {
+    try {
+      const token = await AsyncStorage.getItem('astrologerToken');
+      if (!token) {
+        console.log('No auth token found');
+        return;
+      }
+
+      const response = await fetch(`${API_BASE_URL}/wallet/balance`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch wallet balance');
+      }
+
+      const data = await response.json();
+      console.log('Fetched wallet balance:', data);
+      
+      if (data.success) {
+        setWalletBalance(data.data?.balance || 0);
+      }
+    } catch (error) {
+      console.error('Error fetching wallet balance:', error);
+      Alert.alert('Error', 'Failed to fetch wallet balance');
+    }
+  };
+
   const fetchTransactions = async () => {
     try {
       setLoading(true);
-      
-      // In a real app, this would call your backend API
-      // const response = await axios.get(`${API_URL}/astrologer/transactions?type=${activeTab}`);
-      // setTransactions(response.data);
-      
-      // Simulate API call with dummy data
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const dummyTransactions = [
-        {
-          id: '1',
-          type: 'earning',
-          amount: 500,
-          description: 'Chat consultation with Rahul Sharma',
-          date: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
-          status: 'completed',
-        },
-        {
-          id: '2',
-          type: 'earning',
-          amount: 750,
-          description: 'Video consultation with Priya Patel',
-          date: new Date(Date.now() - 172800000).toISOString(), // 2 days ago
-          status: 'completed',
-        },
-        {
-          id: '3',
-          type: 'withdrawal',
-          amount: 1000,
-          description: 'Withdrawal to bank account',
-          date: new Date(Date.now() - 259200000).toISOString(), // 3 days ago
-          status: 'processing',
-        },
-        {
-          id: '4',
-          type: 'earning',
-          amount: 400,
-          description: 'Chat consultation with Amit Kumar',
-          date: new Date(Date.now() - 345600000).toISOString(), // 4 days ago
-          status: 'completed',
-        },
-        {
-          id: '5',
-          type: 'withdrawal',
-          amount: 800,
-          description: 'Withdrawal to bank account',
-          date: new Date(Date.now() - 432000000).toISOString(), // 5 days ago
-          status: 'completed',
-        },
-      ];
-      
-      // Filter transactions based on active tab
-      let filteredTransactions = dummyTransactions;
-      if (activeTab === 'earnings') {
-        filteredTransactions = dummyTransactions.filter(t => t.type === 'earning');
-      } else if (activeTab === 'withdrawals') {
-        filteredTransactions = dummyTransactions.filter(t => t.type === 'withdrawal');
+      const token = await AsyncStorage.getItem('astrologerToken');
+      if (!token) {
+        console.log('No auth token found');
+        return;
       }
+
+      // Build query parameters based on active tab
+      let queryParams = '';
+      if (activeTab === 'earnings') {
+        queryParams = '?type=session_payment';
+      } else if (activeTab === 'withdrawals') {
+        queryParams = '?type=withdrawal';
+      }
+
+      const response = await fetch(`${API_BASE_URL}/wallet/transactions${queryParams}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch transactions');
+      }
+
+      const data = await response.json();
+      console.log('Fetched transactions:', data);
       
-      setTransactions(filteredTransactions);
-      setLoading(false);
+      if (data.success) {
+        // Transform backend data to match frontend expectations
+        const transformedTransactions = data.data.map(transaction => ({
+          id: transaction._id,
+          type: getTransactionDisplayType(transaction.type),
+          amount: transaction.amount,
+          description: transaction.description || getDefaultDescription(transaction.type),
+          date: transaction.createdAt,
+          status: transaction.status,
+        }));
+        
+        setTransactions(transformedTransactions);
+      }
     } catch (error) {
-      console.log('Error fetching transactions:', error);
+      console.error('Error fetching transactions:', error);
+      Alert.alert('Error', 'Failed to fetch transactions');
+    } finally {
       setLoading(false);
+      setRefreshing(false);
     }
+  };
+
+  const getTransactionDisplayType = (backendType) => {
+    switch (backendType) {
+      case 'session_payment':
+      case 'commission':
+        return 'earning';
+      case 'withdrawal':
+        return 'withdrawal';
+      case 'bonus_credit':
+      case 'admin_credit':
+        return 'earning';
+      case 'admin_debit':
+        return 'withdrawal';
+      default:
+        return 'earning';
+    }
+  };
+
+  const getDefaultDescription = (type) => {
+    switch (type) {
+      case 'session_payment':
+        return 'Consultation session payment';
+      case 'commission':
+        return 'Platform commission';
+      case 'withdrawal':
+        return 'Withdrawal to bank account';
+      case 'bonus_credit':
+        return 'Bonus credit';
+      case 'admin_credit':
+        return 'Admin credit adjustment';
+      case 'admin_debit':
+        return 'Admin debit adjustment';
+      default:
+        return 'Transaction';
+    }
+  };
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchWalletData();
   };
 
   const formatDate = (dateString) => {
@@ -184,7 +257,7 @@ const WalletScreen = () => {
       
       <View style={styles.balanceCard}>
         <Text style={styles.balanceLabel}>Available Balance</Text>
-        <Text style={styles.balanceAmount}>₹{user?.walletBalance || 0}</Text>
+        <Text style={styles.balanceAmount}>₹{walletBalance}</Text>
         <TouchableOpacity style={styles.withdrawButton}>
           <Text style={styles.withdrawButtonText}>Withdraw to Bank</Text>
         </TouchableOpacity>
@@ -244,6 +317,12 @@ const WalletScreen = () => {
             keyExtractor={(item) => item.id}
             contentContainerStyle={styles.transactionsList}
             showsVerticalScrollIndicator={false}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+              />
+            }
             ListEmptyComponent={renderEmptyList}
           />
         )}

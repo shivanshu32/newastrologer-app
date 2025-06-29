@@ -16,14 +16,35 @@
     ],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.jyotishcall.astrologer"
+      "bundleIdentifier": "com.jyotishcall.astrologer",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Allow Jyotish Call to access your microphone for voice consultations with users",
+        "NSCameraUsageDescription": "Allow Jyotish Call to access your camera for video consultations with users"
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon-square.png",
         "backgroundColor": "#ffffff"
       },
-      "package": "com.jyotishcall.astrologer"
+      "package": "com.jyotishcall.astrologer",
+      "minSdkVersion": 25,
+      "permissions": [
+        "CAMERA",
+        "RECORD_AUDIO",
+        "MODIFY_AUDIO_SETTINGS",
+        "INTERNET",
+        "ACCESS_NETWORK_STATE"
+      ],
+      "usesCleartextTraffic": true,
+      "networkSecurityConfig": {
+        "domain-config": [
+          {
+            "domain": "jyotishcallbackend-2uxrv.ondigitalocean.app",
+            "includeSubdomains": true
+          }
+        ]
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -34,6 +55,14 @@
         {
           "icon": "./assets/notification-icon.png",
           "color": "#ffffff"
+        }
+      ],
+      [
+        "@sentry/react-native/expo",
+        {
+          "url": "https://sentry.io/",
+          "project": "react-native",
+          "organization": "jyotishcall"
         }
       ]
     ],

@@ -9,8 +9,10 @@ import {
   Alert,
   ActivityIndicator,
   Image,
+  Button,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as Sentry from '@sentry/react-native';
 import { useAuth } from '../../context/AuthContext';
 import { bookingsAPI } from '../../services/api';
 import { listenForBookingRequests, respondToBookingRequest } from '../../services/socketService';
@@ -200,46 +202,93 @@ const HomeScreen = ({ navigation }) => {
 
   const renderBookingItem = ({ item }) => {
     const requestedTime = new Date(item.requestedTime);
+    const scheduledTime = item.scheduledAt ? new Date(item.scheduledAt) : null;
     
     return (
       <View style={styles.bookingCard}>
         <View style={styles.bookingHeader}>
           <View style={styles.userInfo}>
             <Image source={{ uri: item.userImage }} style={styles.userImage} />
-            <View>
+            <View style={styles.userDetails}>
               <Text style={styles.userName}>{item.userName}</Text>
               <View style={styles.bookingType}>
                 <Ionicons
                   name={
-                    item.type === 'chat' ? 'chatbubble-outline' : 
-                    item.type === 'video' ? 'videocam-outline' : 
-                    item.type === 'voice' ? 'call-outline' : 'help-circle-outline'
+                    item.type === 'chat' ? 'chatbubble' : 
+                    item.type === 'video' ? 'videocam' : 
+                    item.type === 'voice' ? 'call' : 'help-circle'
                   }
-                  size={14}
-                  color="#666"
+                  size={16}
+                  color={
+                    item.type === 'chat' ? '#4CAF50' : 
+                    item.type === 'video' ? '#2196F3' : 
+                    item.type === 'voice' ? '#FF9800' : '#666'
+                  }
                 />
                 <Text style={styles.bookingTypeText}>
                   {item.type.charAt(0).toUpperCase() + item.type.slice(1)} Consultation
                 </Text>
               </View>
+              <Text style={styles.timeAgo}>
+                Requested {Math.floor((new Date() - requestedTime) / 60000)} min ago
+              </Text>
             </View>
           </View>
-          <Text style={styles.timeAgo}>
-            {Math.floor((new Date() - requestedTime) / 60000)} min ago
-          </Text>
+          <View style={styles.bookingBadge}>
+            <Text style={styles.badgeText}>NEW</Text>
+          </View>
+        </View>
+        
+        {/* Enhanced booking details */}
+        <View style={styles.bookingDetails}>
+          {scheduledTime && (
+            <View style={styles.detailRow}>
+              <Ionicons name="calendar" size={16} color="#666" />
+              <Text style={styles.detailLabel}>Scheduled:</Text>
+              <Text style={styles.detailValue}>
+                {scheduledTime.toLocaleDateString()} at {scheduledTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+              </Text>
+            </View>
+          )}
+          
+          <View style={styles.detailRow}>
+            <Ionicons name="cash" size={16} color="#4CAF50" />
+            <Text style={styles.detailLabel}>Amount:</Text>
+            <Text style={styles.detailValue}>₹{item.amount || item.rate || 'N/A'}</Text>
+          </View>
+          
+          {item.duration && (
+            <View style={styles.detailRow}>
+              <Ionicons name="time" size={16} color="#FF9800" />
+              <Text style={styles.detailLabel}>Duration:</Text>
+              <Text style={styles.detailValue}>{item.duration} minutes</Text>
+            </View>
+          )}
+          
+          {item.message && (
+            <View style={styles.messageContainer}>
+              <Ionicons name="chatbubble-outline" size={16} color="#666" />
+              <Text style={styles.messageLabel}>Message:</Text>
+              <Text style={styles.messageText} numberOfLines={2}>{item.message}</Text>
+            </View>
+          )}
         </View>
         
         <View style={styles.actionButtons}>
           <TouchableOpacity
             style={[styles.actionButton, styles.rejectButton]}
             onPress={() => handleRejectBooking(item)}
+            disabled={loading}
           >
-            <Text style={styles.rejectButtonText}>Reject</Text>
+            <Ionicons name="close-circle" size={18} color="#FF5252" />
+            <Text style={styles.rejectButtonText}>Decline</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.actionButton, styles.acceptButton]}
             onPress={() => handleAcceptBooking(item)}
+            disabled={loading}
           >
+            <Ionicons name="checkmark-circle" size={18} color="#fff" />
             <Text style={styles.acceptButtonText}>Accept</Text>
           </TouchableOpacity>
         </View>
@@ -320,6 +369,7 @@ const HomeScreen = ({ navigation }) => {
           <ActivityIndicator size="large" color="#8A2BE2" />
         </View>
       )}
+      <Button title='Try!' onPress={ () => { Sentry.captureException(new Error('First error')) }}/>
     </View>
   );
 };
@@ -366,8 +416,9 @@ const styles = StyleSheet.create({
   },
   statsContainer: {
     flexDirection: 'row',
-    marginTop: -30,
+    marginTop: -10,
     marginHorizontal: 20,
+    marginBottom: 20,
   },
   statCard: {
     flex: 1,
@@ -455,11 +506,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
   },
+  userDetails: {
+    marginLeft: 10,
+  },
   userImage: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    marginRight: 10,
   },
   userName: {
     fontSize: 16,
@@ -479,6 +532,50 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666',
   },
+  bookingBadge: {
+    backgroundColor: '#8A2BE2',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 10,
+  },
+  badgeText: {
+    fontSize: 12,
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  bookingDetails: {
+    marginBottom: 15,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  detailLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginLeft: 5,
+  },
+  detailValue: {
+    fontSize: 14,
+    color: '#333',
+    marginLeft: 5,
+  },
+  messageContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  messageLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginLeft: 5,
+  },
+  messageText: {
+    fontSize: 14,
+    color: '#333',
+    marginLeft: 5,
+  },
   actionButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -489,13 +586,18 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     alignItems: 'center',
     marginHorizontal: 5,
+    flexDirection: 'row',
+    justifyContent: 'center',
   },
   rejectButton: {
     backgroundColor: '#f0f0f0',
+    borderColor: '#FF5252',
+    borderWidth: 1,
   },
   rejectButtonText: {
-    color: '#666',
+    color: '#FF5252',
     fontWeight: 'bold',
+    marginLeft: 5,
   },
   acceptButton: {
     backgroundColor: '#8A2BE2',
@@ -503,6 +605,7 @@ const styles = StyleSheet.create({
   acceptButtonText: {
     color: '#fff',
     fontWeight: 'bold',
+    marginLeft: 5,
   },
   loadingOverlay: {
     position: 'absolute',

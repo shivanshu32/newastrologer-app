@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   View,
@@ -7,330 +7,409 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Image,
+  Alert,
+  RefreshControl,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { useFocusEffect } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSocket } from '../../context/SocketContext';
+
+const API_BASE_URL = 'https://jyotishcallbackend-2uxrv.ondigitalocean.app/api/v1';
 
 const BookingsScreen = ({ navigation }) => {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('upcoming');
+  const [refreshing, setRefreshing] = useState(false);
+  const [activeTab, setActiveTab] = useState('active');
+  
+  const { socket } = useSocket();
 
-  useEffect(() => {
-    fetchBookings();
-  }, [activeTab]);
-
-  const fetchBookings = async () => {
+  // Fetch bookings from API
+  const fetchBookings = useCallback(async () => {
     try {
-      setLoading(true);
-      
-      // In a real app, this would call your backend API
-      // const response = await axios.get(`${API_URL}/astrologer/bookings?status=${activeTab}`);
-      // setBookings(response.data);
-      
-      // Simulate API call with dummy data
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      let dummyBookings = [];
-      
-      if (activeTab === 'upcoming') {
-        dummyBookings = [
-          {
-            id: '1',
-            userId: '101',
-            userName: 'Rahul Sharma',
-            userImage: 'https://via.placeholder.com/100',
-            type: 'chat',
-            status: 'confirmed',
-            scheduledTime: new Date(Date.now() + 3600000).toISOString(), // 1 hour from now
-            duration: 30,
-            amount: 500,
-          },
-          {
-            id: '2',
-            userId: '102',
-            userName: 'Priya Patel',
-            userImage: 'https://via.placeholder.com/100',
-            type: 'video',
-            status: 'confirmed',
-            scheduledTime: new Date(Date.now() + 7200000).toISOString(), // 2 hours from now
-            duration: 15,
-            amount: 750,
-          },
-        ];
-      } else if (activeTab === 'completed') {
-        dummyBookings = [
-          {
-            id: '3',
-            userId: '103',
-            userName: 'Amit Kumar',
-            userImage: 'https://via.placeholder.com/100',
-            type: 'chat',
-            status: 'completed',
-            scheduledTime: new Date(Date.now() - 86400000).toISOString(), // 1 day ago
-            actualDuration: 25,
-            amount: 400,
-            rating: 4.5,
-          },
-          {
-            id: '4',
-            userId: '104',
-            userName: 'Neha Singh',
-            userImage: 'https://via.placeholder.com/100',
-            type: 'video',
-            status: 'completed',
-            scheduledTime: new Date(Date.now() - 172800000).toISOString(), // 2 days ago
-            actualDuration: 18,
-            amount: 900,
-            rating: 5,
-          },
-        ];
-      } else if (activeTab === 'cancelled') {
-        dummyBookings = [
-          {
-            id: '5',
-            userId: '105',
-            userName: 'Vikram Malhotra',
-            userImage: 'https://via.placeholder.com/100',
-            type: 'chat',
-            status: 'cancelled',
-            scheduledTime: new Date(Date.now() - 259200000).toISOString(), // 3 days ago
-            cancellationReason: 'User cancelled the booking',
-          },
-        ];
+      const token = await AsyncStorage.getItem('astrologerToken');
+      if (!token) {
+        console.log('No auth token found');
+        return;
       }
+
+      const response = await fetch(`${API_BASE_URL}/bookings`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch bookings');
+      }
+
+      const data = await response.json();
+      console.log('Fetched bookings:', data);
       
-      setBookings(dummyBookings);
-      setLoading(false);
+      if (data.success) {
+        setBookings(data.data || []);
+      }
     } catch (error) {
-      console.log('Error fetching bookings:', error);
+      console.error('Error fetching bookings:', error);
+      Alert.alert('Error', 'Failed to fetch bookings');
+    } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  };
+  }, []);
 
-  const handleStartSession = (booking) => {
-    if (booking.type === 'chat') {
-      navigation.navigate('BookingsChat', { bookingId: booking.id });
-    } else if (booking.type === 'video') {
-      navigation.navigate('BookingsVideoCall', { bookingId: booking.id });
-    } else if (booking.type === 'voice') {
-      navigation.navigate('BookingsVoiceCall', { bookingId: booking.id });
-    }
-  };
+  // Filter bookings based on active tab
+  const getFilteredBookings = useCallback(() => {
+    if (!bookings || bookings.length === 0) return [];
 
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-IN', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-    });
-  };
-
-  const formatTime = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleTimeString('en-IN', {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: true,
-    });
-  };
-
-  const getStatusBadge = (status) => {
-    let backgroundColor, textColor, label;
-    
-    switch (status) {
-      case 'confirmed':
-        backgroundColor = '#e6f7ff';
-        textColor = '#0070f3';
-        label = 'Confirmed';
-        break;
+    switch (activeTab) {
+      case 'active':
+        return bookings.filter(booking => 
+          ['pending', 'confirmed', 'waiting_for_user', 'in-progress'].includes(booking.status)
+        );
       case 'completed':
-        backgroundColor = '#e6fff0';
-        textColor = '#00a854';
-        label = 'Completed';
-        break;
+        return bookings.filter(booking => 
+          ['completed', 'no_show'].includes(booking.status)
+        );
       case 'cancelled':
-        backgroundColor = '#fff1f0';
-        textColor = '#f5222d';
-        label = 'Cancelled';
-        break;
+        return bookings.filter(booking => 
+          ['cancelled', 'rejected', 'expired'].includes(booking.status)
+        );
       default:
-        backgroundColor = '#f0f0f0';
-        textColor = '#666';
-        label = status.charAt(0).toUpperCase() + status.slice(1);
+        return bookings;
     }
-    
-    return (
-      <View style={[styles.statusBadge, { backgroundColor }]}>
-        <Text style={[styles.statusText, { color: textColor }]}>{label}</Text>
-      </View>
-    );
+  }, [bookings, activeTab]);
+
+  // Handle pull to refresh
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchBookings();
+  }, [fetchBookings]);
+
+  // Handle booking action (join session, complete, etc.)
+  const handleBookingAction = useCallback(async (booking, action) => {
+    try {
+      const token = await AsyncStorage.getItem('astrologerToken');
+      if (!token) {
+        Alert.alert('Error', 'Authentication token not found');
+        return;
+      }
+
+      let endpoint = '';
+      let method = 'POST';
+      
+      switch (action) {
+        case 'join':
+          endpoint = `${API_BASE_URL}/bookings/${booking._id}/join-astrologer`;
+          break;
+        case 'complete':
+          endpoint = `${API_BASE_URL}/bookings/${booking._id}/complete`;
+          break;
+        case 'cancel':
+          endpoint = `${API_BASE_URL}/bookings/${booking._id}/cancel`;
+          break;
+        default:
+          return;
+      }
+
+      const response = await fetch(endpoint, {
+        method,
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || `Failed to ${action} booking`);
+      }
+
+      Alert.alert('Success', `Booking ${action}ed successfully`);
+      fetchBookings(); // Refresh bookings list
+      
+      // Navigate to appropriate screen for join action
+      if (action === 'join') {
+        if (booking.type === 'video') {
+          navigation.navigate('VideoConsultation', { bookingId: booking._id });
+        } else if (booking.type === 'voice') {
+          navigation.navigate('VoiceCall', { bookingId: booking._id });
+        }
+      }
+    } catch (error) {
+      console.error(`Error ${action}ing booking:`, error);
+      Alert.alert('Error', error.message || `Failed to ${action} booking`);
+    }
+  }, [navigation, fetchBookings]);
+
+  // Get status color and display text
+  const getStatusInfo = (status) => {
+    switch (status) {
+      case 'pending':
+        return { color: '#FF9800', text: 'Pending', icon: 'time-outline' };
+      case 'confirmed':
+        return { color: '#4CAF50', text: 'Confirmed', icon: 'checkmark-circle-outline' };
+      case 'waiting_for_user':
+        return { color: '#2196F3', text: 'Waiting for User', icon: 'person-outline' };
+      case 'in-progress':
+        return { color: '#9C27B0', text: 'In Progress', icon: 'play-circle-outline' };
+      case 'completed':
+        return { color: '#4CAF50', text: 'Completed', icon: 'checkmark-done-outline' };
+      case 'cancelled':
+        return { color: '#F44336', text: 'Cancelled', icon: 'close-circle-outline' };
+      case 'rejected':
+        return { color: '#F44336', text: 'Rejected', icon: 'close-outline' };
+      case 'expired':
+        return { color: '#9E9E9E', text: 'Expired', icon: 'time-outline' };
+      case 'no_show':
+        return { color: '#FF5722', text: 'No Show', icon: 'person-remove-outline' };
+      case 'rescheduled':
+        return { color: '#FF9800', text: 'Rescheduled', icon: 'calendar-outline' };
+      default:
+        return { color: '#9E9E9E', text: status, icon: 'help-outline' };
+    }
   };
 
-  const renderBookingItem = ({ item }) => {
-    const isUpcoming = activeTab === 'upcoming';
-    const scheduledDate = new Date(item.scheduledTime);
-    const now = new Date();
-    const canStartSession = isUpcoming && (scheduledDate <= now || scheduledDate - now < 300000); // Can start if scheduled time is now or within 5 minutes
-    
+  // Format date and time
+  const formatDateTime = (dateString) => {
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return 'Not specified';
+      
+      return date.toLocaleString('en-IN', {
+        weekday: 'short',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch (error) {
+      return 'Not specified';
+    }
+  };
+
+  // Render booking item
+  const renderBookingItem = ({ item: booking }) => {
+    const statusInfo = getStatusInfo(booking.status);
+    const isVideoCall = booking.type === 'video';
+    const isVoiceCall = booking.type === 'voice';
+    const canJoin = ['confirmed', 'waiting_for_user'].includes(booking.status);
+    const canComplete = booking.status === 'in-progress';
+    const canCancel = ['pending', 'confirmed'].includes(booking.status);
+
     return (
       <View style={styles.bookingCard}>
         <View style={styles.bookingHeader}>
           <View style={styles.userInfo}>
-            <Image source={{ uri: item.userImage }} style={styles.userImage} />
-            <View>
-              <Text style={styles.userName}>{item.userName}</Text>
-              <View style={styles.bookingType}>
-                <Ionicons
-                  name={item.type === 'chat' ? 'chatbubble-outline' : 'videocam-outline'}
-                  size={14}
-                  color="#666"
-                />
-                <Text style={styles.bookingTypeText}>
-                  {item.type.charAt(0).toUpperCase() + item.type.slice(1)} Consultation
+            <Image
+              source={{ 
+                uri: booking.user?.profileImage || 'https://via.placeholder.com/50'
+              }}
+              style={styles.userImage}
+            />
+            <View style={styles.userDetails}>
+              <Text style={styles.userName}>
+                {booking.user?.name || 'User'}
+              </Text>
+              <View style={styles.typeContainer}>
+                {isVideoCall && (
+                  <MaterialIcons name="videocam" size={16} color="#2196F3" />
+                )}
+                {isVoiceCall && (
+                  <MaterialIcons name="phone" size={16} color="#4CAF50" />
+                )}
+                <Text style={styles.typeText}>
+                  {booking.type?.charAt(0).toUpperCase() + booking.type?.slice(1)} Call
                 </Text>
               </View>
             </View>
           </View>
-          {getStatusBadge(item.status)}
+          
+          <View style={[styles.statusBadge, { backgroundColor: statusInfo.color }]}>
+            <Ionicons name={statusInfo.icon} size={14} color="#fff" />
+            <Text style={styles.statusText}>{statusInfo.text}</Text>
+          </View>
         </View>
-        
+
         <View style={styles.bookingDetails}>
-          <View style={styles.detailItem}>
+          <View style={styles.detailRow}>
             <Ionicons name="calendar-outline" size={16} color="#666" />
-            <Text style={styles.detailText}>{formatDate(item.scheduledTime)}</Text>
+            <Text style={styles.detailText}>
+              {formatDateTime(booking.scheduledAt)}
+            </Text>
           </View>
-          <View style={styles.detailItem}>
-            <Ionicons name="time-outline" size={16} color="#666" />
-            <Text style={styles.detailText}>{formatTime(item.scheduledTime)}</Text>
+          
+          <View style={styles.detailRow}>
+            <Ionicons name="cash-outline" size={16} color="#666" />
+            <Text style={styles.detailText}>
+              ₹{booking.rate || booking.amount || 0}
+            </Text>
           </View>
-          {item.duration && (
-            <View style={styles.detailItem}>
-              <Ionicons name="hourglass-outline" size={16} color="#666" />
-              <Text style={styles.detailText}>{item.duration} min</Text>
-            </View>
-          )}
-          {item.actualDuration && (
-            <View style={styles.detailItem}>
-              <Ionicons name="hourglass-outline" size={16} color="#666" />
-              <Text style={styles.detailText}>{item.actualDuration} min (actual)</Text>
-            </View>
-          )}
-          {item.amount && (
-            <View style={styles.detailItem}>
-              <Ionicons name="cash-outline" size={16} color="#666" />
-              <Text style={styles.detailText}>₹{item.amount}</Text>
-            </View>
-          )}
-          {item.rating && (
-            <View style={styles.detailItem}>
-              <Ionicons name="star" size={16} color="#FFD700" />
-              <Text style={styles.detailText}>{item.rating}</Text>
-            </View>
-          )}
-          {item.cancellationReason && (
-            <View style={styles.detailItem}>
-              <Ionicons name="information-circle-outline" size={16} color="#f5222d" />
-              <Text style={[styles.detailText, { color: '#f5222d' }]}>
-                {item.cancellationReason}
+
+          {booking.duration && (
+            <View style={styles.detailRow}>
+              <Ionicons name="time-outline" size={16} color="#666" />
+              <Text style={styles.detailText}>
+                {booking.duration} minutes
               </Text>
             </View>
           )}
         </View>
-        
-        {isUpcoming && (
-          <TouchableOpacity
-            style={[
-              styles.startButton,
-              !canStartSession && styles.startButtonDisabled,
-            ]}
-            onPress={() => handleStartSession(item)}
-            disabled={!canStartSession}
-          >
-            <Text style={[
-              styles.startButtonText,
-              !canStartSession && styles.startButtonTextDisabled,
-            ]}>
-              {canStartSession ? 'Start Session' : 'Session Not Ready'}
-            </Text>
-          </TouchableOpacity>
+
+        {(canJoin || canComplete || canCancel) && (
+          <View style={styles.actionButtons}>
+            {canJoin && (
+              <TouchableOpacity
+                style={[styles.actionButton, styles.joinButton]}
+                onPress={() => handleBookingAction(booking, 'join')}
+              >
+                <Ionicons name="videocam" size={16} color="#fff" />
+                <Text style={styles.actionButtonText}>Join Session</Text>
+              </TouchableOpacity>
+            )}
+            
+            {canComplete && (
+              <TouchableOpacity
+                style={[styles.actionButton, styles.completeButton]}
+                onPress={() => handleBookingAction(booking, 'complete')}
+              >
+                <Ionicons name="checkmark" size={16} color="#fff" />
+                <Text style={styles.actionButtonText}>Complete</Text>
+              </TouchableOpacity>
+            )}
+            
+            {canCancel && (
+              <TouchableOpacity
+                style={[styles.actionButton, styles.cancelButton]}
+                onPress={() => {
+                  Alert.alert(
+                    'Cancel Booking',
+                    'Are you sure you want to cancel this booking?',
+                    [
+                      { text: 'No', style: 'cancel' },
+                      { text: 'Yes', onPress: () => handleBookingAction(booking, 'cancel') }
+                    ]
+                  );
+                }}
+              >
+                <Ionicons name="close" size={16} color="#F44336" />
+                <Text style={[styles.actionButtonText, { color: '#F44336' }]}>Cancel</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         )}
       </View>
     );
   };
 
-  const renderEmptyList = () => (
-    <View style={styles.emptyContainer}>
-      <Ionicons name="calendar-outline" size={60} color="#ccc" />
-      <Text style={styles.emptyText}>No bookings found</Text>
-      <Text style={styles.emptySubtext}>
-        {activeTab === 'upcoming'
-          ? 'You have no upcoming bookings'
-          : activeTab === 'completed'
-          ? 'You have no completed consultations yet'
-          : 'You have no cancelled bookings'}
-      </Text>
-    </View>
+  // Set up socket listeners for real-time updates
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleBookingUpdate = (data) => {
+      console.log('Booking update received:', data);
+      fetchBookings(); // Refresh bookings list
+    };
+
+    // Listen for various booking lifecycle events
+    socket.on('booking_accepted', handleBookingUpdate);
+    socket.on('booking_rejected', handleBookingUpdate);
+    socket.on('booking_expired', handleBookingUpdate);
+    socket.on('booking_cancelled', handleBookingUpdate);
+    socket.on('session_started', handleBookingUpdate);
+    socket.on('session_completed', handleBookingUpdate);
+    socket.on('user_joined_session', handleBookingUpdate);
+    socket.on('no_show_detected', handleBookingUpdate);
+
+    return () => {
+      socket.off('booking_accepted', handleBookingUpdate);
+      socket.off('booking_rejected', handleBookingUpdate);
+      socket.off('booking_expired', handleBookingUpdate);
+      socket.off('booking_cancelled', handleBookingUpdate);
+      socket.off('session_started', handleBookingUpdate);
+      socket.off('session_completed', handleBookingUpdate);
+      socket.off('user_joined_session', handleBookingUpdate);
+      socket.off('no_show_detected', handleBookingUpdate);
+    };
+  }, [socket, fetchBookings]);
+
+  // Fetch bookings when screen comes into focus
+  useFocusEffect(
+    useCallback(() => {
+      fetchBookings();
+    }, [fetchBookings])
   );
+
+  const filteredBookings = getFilteredBookings();
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>My Bookings</Text>
-      </View>
-      
+      {/* Tab Navigation */}
       <View style={styles.tabContainer}>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'upcoming' && styles.activeTab]}
-          onPress={() => setActiveTab('upcoming')}
-        >
-          <Text
+        {[
+          { key: 'active', label: 'Active', icon: 'play-circle-outline' },
+          { key: 'completed', label: 'Completed', icon: 'checkmark-circle-outline' },
+          { key: 'cancelled', label: 'Cancelled', icon: 'close-circle-outline' }
+        ].map((tab) => (
+          <TouchableOpacity
+            key={tab.key}
             style={[
-              styles.tabText,
-              activeTab === 'upcoming' && styles.activeTabText,
+              styles.tab,
+              activeTab === tab.key && styles.activeTab
             ]}
+            onPress={() => setActiveTab(tab.key)}
           >
-            Upcoming
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'completed' && styles.activeTab]}
-          onPress={() => setActiveTab('completed')}
-        >
-          <Text
-            style={[
+            <Ionicons 
+              name={tab.icon} 
+              size={20} 
+              color={activeTab === tab.key ? '#673AB7' : '#666'} 
+            />
+            <Text style={[
               styles.tabText,
-              activeTab === 'completed' && styles.activeTabText,
-            ]}
-          >
-            Completed
-          </Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.tab, activeTab === 'cancelled' && styles.activeTab]}
-          onPress={() => setActiveTab('cancelled')}
-        >
-          <Text
-            style={[
-              styles.tabText,
-              activeTab === 'cancelled' && styles.activeTabText,
-            ]}
-          >
-            Cancelled
-          </Text>
-        </TouchableOpacity>
+              activeTab === tab.key && styles.activeTabText
+            ]}>
+              {tab.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
-      
+
+      {/* Bookings List */}
       {loading ? (
-        <ActivityIndicator style={styles.loader} size="large" color="#8A2BE2" />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#673AB7" />
+          <Text style={styles.loadingText}>Loading bookings...</Text>
+        </View>
       ) : (
         <FlatList
-          data={bookings}
+          data={filteredBookings}
           renderItem={renderBookingItem}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.bookingsList}
+          keyExtractor={(item) => item._id}
+          contentContainerStyle={styles.listContainer}
           showsVerticalScrollIndicator={false}
-          ListEmptyComponent={renderEmptyList}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={['#673AB7']}
+            />
+          }
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Ionicons name="calendar-outline" size={64} color="#ccc" />
+              <Text style={styles.emptyText}>
+                No {activeTab} bookings found
+              </Text>
+              <Text style={styles.emptySubtext}>
+                Pull down to refresh
+              </Text>
+            </View>
+          }
         />
       )}
     </View>
@@ -342,152 +421,171 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f8f8f8',
   },
-  header: {
-    backgroundColor: '#8A2BE2',
-    paddingTop: 50,
-    paddingBottom: 20,
-    paddingHorizontal: 20,
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
-  },
-  headerTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#fff',
-  },
   tabContainer: {
     flexDirection: 'row',
     backgroundColor: '#fff',
-    marginHorizontal: 20,
-    marginTop: -15,
-    borderRadius: 10,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
   },
   tab: {
     flex: 1,
-    paddingVertical: 15,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+    marginHorizontal: 4,
   },
   activeTab: {
-    borderBottomWidth: 2,
-    borderBottomColor: '#8A2BE2',
+    backgroundColor: '#f3e5f5',
   },
   tabText: {
     fontSize: 14,
     color: '#666',
+    marginLeft: 6,
+    fontWeight: '500',
   },
   activeTabText: {
-    color: '#8A2BE2',
-    fontWeight: 'bold',
+    color: '#673AB7',
+    fontWeight: '600',
   },
-  loader: {
+  loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  bookingsList: {
-    padding: 20,
-    paddingTop: 30,
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#666',
+  },
+  listContainer: {
+    padding: 16,
+  },
+  bookingCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  bookingHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+  },
+  userInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  userImage: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    marginRight: 12,
+  },
+  userDetails: {
+    flex: 1,
+  },
+  userName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#333',
+    marginBottom: 4,
+  },
+  typeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  typeText: {
+    fontSize: 14,
+    color: '#666',
+    marginLeft: 4,
+  },
+  statusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusText: {
+    fontSize: 12,
+    color: '#fff',
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  bookingDetails: {
+    marginBottom: 12,
+  },
+  detailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  detailText: {
+    fontSize: 14,
+    color: '#666',
+    marginLeft: 8,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    flex: 1,
+  },
+  joinButton: {
+    backgroundColor: '#4CAF50',
+  },
+  completeButton: {
+    backgroundColor: '#2196F3',
+  },
+  cancelButton: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#F44336',
+  },
+  actionButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
+    marginLeft: 4,
   },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingTop: 100,
+    paddingVertical: 64,
   },
   emptyText: {
     fontSize: 18,
-    fontWeight: 'bold',
-    marginTop: 20,
-    marginBottom: 10,
+    color: '#999',
+    marginTop: 16,
+    fontWeight: '500',
   },
   emptySubtext: {
     fontSize: 14,
-    color: '#666',
-    textAlign: 'center',
-  },
-  bookingCard: {
-    backgroundColor: '#fff',
-    borderRadius: 10,
-    padding: 15,
-    marginBottom: 15,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  bookingHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 15,
-  },
-  userInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  userImage: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    marginRight: 10,
-  },
-  userName: {
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  bookingType: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 5,
-  },
-  bookingTypeText: {
-    fontSize: 14,
-    color: '#666',
-    marginLeft: 5,
-  },
-  statusBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 15,
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  bookingDetails: {
-    marginBottom: 15,
-  },
-  detailItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  detailText: {
-    fontSize: 14,
-    color: '#666',
-    marginLeft: 10,
-  },
-  startButton: {
-    backgroundColor: '#8A2BE2',
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  startButtonDisabled: {
-    backgroundColor: '#f0f0f0',
-  },
-  startButtonText: {
-    color: '#fff',
-    fontWeight: 'bold',
-  },
-  startButtonTextDisabled: {
-    color: '#999',
+    color: '#ccc',
+    marginTop: 8,
   },
 });
 

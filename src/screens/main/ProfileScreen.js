@@ -13,18 +13,9 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
-import { useNotification } from '../../context/NotificationContext';
-import {
-  sendNewBookingNotification,
-  sendSessionReminderNotification,
-  sendPaymentReceivedNotification,
-  sendNewRatingNotification,
-  runAllNotificationTests
-} from '../../utils/notificationTester';
 
 const ProfileScreen = () => {
   const { user, logout, updateStatus } = useAuth();
-  const { sendTestNotification } = useNotification();
   const [loading, setLoading] = useState(false);
   const [statusLoading, setStatusLoading] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -74,74 +65,8 @@ const ProfileScreen = () => {
     setShowLogoutConfirm(false);
   };
 
-  const handleTestNotification = async () => {
-    const result = await sendTestNotification();
-    
-    if (result.success) {
-      Alert.alert('Success', 'Test notification sent successfully!');
-    } else {
-      Alert.alert('Error', result.message || 'Failed to send test notification.');
-    }
-  };
-
-  const handleNewBookingTest = async () => {
-    const result = await sendNewBookingNotification();
-    if (result.success) {
-      Alert.alert('Success', 'New booking notification sent!');
-    } else {
-      Alert.alert('Error', result.message || 'Failed to send notification.');
-    }
-  };
-
-  const handleSessionReminderTest = async () => {
-    const result = await sendSessionReminderNotification();
-    if (result.success) {
-      Alert.alert('Success', 'Session reminder notification sent!');
-    } else {
-      Alert.alert('Error', result.message || 'Failed to send notification.');
-    }
-  };
-
-  const handlePaymentReceivedTest = async () => {
-    const result = await sendPaymentReceivedNotification();
-    if (result.success) {
-      Alert.alert('Success', 'Payment received notification sent!');
-    } else {
-      Alert.alert('Error', result.message || 'Failed to send notification.');
-    }
-  };
-
-  const handleNewRatingTest = async () => {
-    const result = await sendNewRatingNotification();
-    if (result.success) {
-      Alert.alert('Success', 'New rating notification sent!');
-    } else {
-      Alert.alert('Error', result.message || 'Failed to send notification.');
-    }
-  };
-
-  const handleRunAllTests = async () => {
-    Alert.alert(
-      'Run All Tests',
-      'This will send multiple notifications in sequence. Continue?',
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel'
-        },
-        {
-          text: 'Run Tests',
-          onPress: async () => {
-            const results = await runAllNotificationTests();
-            const successful = results.filter(r => r.success).length;
-            Alert.alert(
-              'Test Results',
-              `${successful} of ${results.length} notification tests completed successfully.`
-            );
-          }
-        }
-      ]
-    );
+  const showComingSoonAlert = () => {
+    Alert.alert('Coming Soon', 'This feature will be live soon');
   };
 
   const renderMenuItem = (icon, title, onPress, showArrow = true, rightElement = null) => (
@@ -225,34 +150,11 @@ const ProfileScreen = () => {
         </View>
         
         <View style={styles.menuCard}>
-          {renderMenuItem('person-outline', 'Edit Profile', () => {})}
-          {renderMenuItem('calendar-outline', 'Manage Availability', () => navigation.navigate('Availability'))}
-          {renderMenuItem('notifications-outline', 'Notifications', () => {}, true, (
-            <Switch
-              value={true}
-              onValueChange={() => {}}
-              trackColor={{ false: '#ccc', true: '#8A2BE2' }}
-              thumbColor="#fff"
-            />
-          ))}
-          {renderMenuItem('card-outline', 'Bank Account Details', () => {})}
-          {renderMenuItem('help-circle-outline', 'Help & Support', () => {})}
-          {renderMenuItem('document-text-outline', 'Terms of Service', () => {})}
-          {renderMenuItem('shield-outline', 'Privacy Policy', () => {})}
+          {renderMenuItem('person-outline', 'Edit Profile', showComingSoonAlert)}
+          {renderMenuItem('help-circle-outline', 'Help & Support', showComingSoonAlert)}
+          {renderMenuItem('document-text-outline', 'Terms of Service', showComingSoonAlert)}
+          {renderMenuItem('shield-outline', 'Privacy Policy', showComingSoonAlert)}
           {renderMenuItem('log-out-outline', 'Logout', () => setShowLogoutConfirm(true), false)}
-        </View>
-        
-        <View style={styles.sectionTitle}>
-          <Text style={styles.sectionTitleText}>Notification Testing</Text>
-        </View>
-        
-        <View style={styles.menuCard}>
-          {renderMenuItem('notifications-outline', 'Test Basic Notification', handleTestNotification)}
-          {renderMenuItem('calendar-outline', 'Test New Booking', handleNewBookingTest)}
-          {renderMenuItem('time-outline', 'Test Session Reminder', handleSessionReminderTest)}
-          {renderMenuItem('cash-outline', 'Test Payment Received', handlePaymentReceivedTest)}
-          {renderMenuItem('star-outline', 'Test New Rating', handleNewRatingTest)}
-          {renderMenuItem('rocket-outline', 'Run All Tests', handleRunAllTests)}
         </View>
         
         <View style={styles.versionContainer}>

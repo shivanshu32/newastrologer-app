@@ -65,17 +65,17 @@ export const listenForBookingRequests = (socket, onBookingRequest) => {
   
   // Create a wrapper function to log the event when received
   const bookingRequestHandler = (data) => {
-    console.log('Received new_booking_request event with data:', data);
+    console.log('Received booking_request event with data:', data);
     onBookingRequest(data);
   };
   
   // Register event listener
-  socket.on('new_booking_request', bookingRequestHandler);
+  socket.on('booking_request', bookingRequestHandler);
   
   // Return cleanup function
   return () => {
-    console.log('Removing event listener for "new_booking_request"');
-    socket.off('new_booking_request', bookingRequestHandler);
+    console.log('Removing event listener for "booking_request"');
+    socket.off('booking_request', bookingRequestHandler);
   };
 };
 
