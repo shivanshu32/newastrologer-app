@@ -32,29 +32,69 @@ const BookingRequestHandler = () => {
     console.log(' [DEBUG] request.type:', request.type);
     console.log(' [DEBUG] request.rate:', request.rate);
     
-    // Extract booking data from the nested structure sent by backend
-    const bookingData = request.booking;
+    // Handle both data structures:
+    // 1. Online bookings: data is nested under request.booking
+    // 2. Offline/queued bookings: data is directly in request object
+    let bookingData;
+    let bookingId;
     
-    if (!bookingData || !bookingData._id) {
-      console.error(' [ERROR] Invalid booking data received:', bookingData);
-      Alert.alert('Error', 'Invalid booking request received');
+    if (request.booking && request.booking._id) {
+      // Online booking - nested structure
+      console.log(' [DEBUG] Processing online booking request');
+      bookingData = request.booking;
+      bookingId = request.booking._id;
+    } else if (request.bookingId) {
+      // Offline/queued booking - flat structure
+      console.log(' [DEBUG] Processing offline/queued booking request');
+      bookingData = {
+        _id: request.bookingId,
+        type: request.type,
+        rate: request.rate,
+        notes: request.notes,
+        createdAt: request.createdAt,
+        expiresAt: request.expiresAt,
+        astrologer: request.astrologer,
+        user: request.user,
+        userInfo: request.userInfo,
+        wasQueued: request.wasQueued,
+        queuedAt: request.queuedAt
+      };
+      bookingId = request.bookingId;
+    } else {
+      console.error(' [ERROR] Invalid booking data - no booking ID found');
+      console.error(' [ERROR] Request structure:', Object.keys(request));
+      Alert.alert('Error', 'Invalid booking request received - missing booking ID');
       return;
     }
     
+    if (!bookingId) {
+      console.error(' [ERROR] No booking ID available');
+      Alert.alert('Error', 'Invalid booking request received - no booking ID');
+      return;
+    }
+    
+    console.log(' [DEBUG] Extracted booking data:', bookingData);
+    console.log(' [DEBUG] Booking ID:', bookingId);
+    
     // Create a properly structured booking request object
     const structuredBookingRequest = {
-      _id: bookingData._id,
-      id: bookingData._id, // Fallback for compatibility
+      _id: bookingId,
+      id: bookingId, // Fallback for compatibility
       user: request.user,
-      type: request.type,
-      rate: request.rate,
-      notes: request.notes,
-      expiresAt: request.expiresAt,
-      // Include all original booking fields
+      type: request.type || bookingData.type,
+      rate: request.rate || bookingData.rate,
+      notes: request.notes || bookingData.notes,
+      expiresAt: request.expiresAt || bookingData.expiresAt,
+      createdAt: request.createdAt || bookingData.createdAt,
+      // Include all booking fields
       ...bookingData,
       // Override with user data from the request for display
       userName: request.user?.name || bookingData.userName,
       userImage: request.user?.profileImage || bookingData.userImage,
+      // Add queued booking specific fields
+      wasQueued: request.wasQueued || false,
+      queuedAt: request.queuedAt,
+      userInfo: request.userInfo || bookingData.userInfo
     };
     
     console.log(' [DEBUG] Structured booking request:', structuredBookingRequest);

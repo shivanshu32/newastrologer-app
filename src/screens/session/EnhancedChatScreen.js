@@ -411,9 +411,20 @@ const EnhancedChatScreen = ({ route, navigation }) => {
 
   // Render message item
   const renderMessage = ({ item }) => {
+
+    console.log("in render message")
+
+    console.log(item)
+
+    console.log("above is item")
+
+
     // Check if this message is from the astrologer (current user)
     const isOwnMessage = item.sender === 'astrologer' || item.senderRole === 'astrologer' || item.senderId === astrologerId;
     const messageText = item.content || item.text || item.message || 'Message content unavailable';
+
+    console.log("message text is")
+    console.log(messageText)
     
     console.log('🔴 [ASTROLOGER-APP] Rendering message:', {
       id: item.id,
