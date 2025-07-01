@@ -169,19 +169,53 @@ const WaitingRoomScreen = () => {
 
     // Listen for direct notifications
     const directNotificationHandler = (data) => {
-      if (data && data.bookingId === bookingId) {
-        handleUserJoined(data);
-      }
+      console.log('🔔 [ASTROLOGER-APP] Direct notification received:', data);
+      // Handle any direct notifications here if needed
     };
-    
-    socket.on('direct_astrologer_notification', directNotificationHandler);
 
-    // Cleanup function to remove listeners
+    // Handle Exotel voice call events
+    const voiceCallInitiatedHandler = (data) => {
+      console.log('📞 [ASTROLOGER-APP] Voice call initiated:', data);
+      Alert.alert(
+        'Voice Call Connecting! 📞',
+        `The system is connecting you with the user. You will receive a phone call shortly. Please answer to start the consultation.\n\nCall Duration: ${data.totalMinutes || 'N/A'} minutes`,
+        [{ text: 'OK' }]
+      );
+    };
+
+    const voiceCallFailedHandler = (data) => {
+      console.log('❌ [ASTROLOGER-APP] Voice call failed:', data);
+      Alert.alert(
+        'Voice Call Failed',
+        data.message || 'Unable to initiate voice call. Please try again or contact support.',
+        [
+          { text: 'OK' },
+          {
+            text: 'Go Back',
+            onPress: () => {
+              // Navigate back to dashboard when call fails
+              navigation.navigate('Dashboard');
+            }
+          }
+        ]
+      );
+    };
+
+    // Set up event listeners
+    socket.on('user_joined_consultation', userJoinedHandler);
+    socket.on('join_consultation', joinConsultationHandler);
+    socket.on('direct_notification', directNotificationHandler);
+    socket.on('voice_call_initiated', voiceCallInitiatedHandler);
+    socket.on('voice_call_failed', voiceCallFailedHandler);
+
+    // Cleanup listeners
     return () => {
-      console.log('🧹 [ASTROLOGER-APP] Cleaning up socket listeners');
+      console.log('🔌 [ASTROLOGER-APP] Cleaning up WaitingRoomScreen listeners');
       socket.off('user_joined_consultation', userJoinedHandler);
       socket.off('join_consultation', joinConsultationHandler);
-      socket.off('direct_astrologer_notification', directNotificationHandler);
+      socket.off('direct_notification', directNotificationHandler);
+      socket.off('voice_call_initiated', voiceCallInitiatedHandler);
+      socket.off('voice_call_failed', voiceCallFailedHandler);
       
       // Leave the room when component unmounts
       socket.emit('leave_room', { bookingId });

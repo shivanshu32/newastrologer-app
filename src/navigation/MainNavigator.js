@@ -1,4 +1,4 @@
-import React, { useContext } from 'react';
+import React, { useContext, useState, useEffect } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { SocketContext } from '../context/SocketContext';
 import navigationConfig from './NavigationConfig';
 import BookingRequestHandler from '../components/BookingRequestHandler';
+import { useFocusEffect } from '@react-navigation/native';
 
 // Temporary test component
 const TestHomeScreen = () => (
@@ -32,12 +33,32 @@ const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator();
 
 // Stack navigator for Home tab
-const HomeStack = () => {
+const HomeStack = ({ navigation, route }) => {
   return (
     <Stack.Navigator
       screenOptions={{
         ...navigationConfig.stack.screenOptions,
         headerShown: false,
+      }}
+      screenListeners={{
+        state: (e) => {
+          // Get the current route name in the stack
+          const routeName = e.data.state.routes[e.data.state.index].name;
+          // Hide tab bar for EnhancedChatScreen
+          if (routeName === 'HomeEnhancedChat') {
+            navigation.setOptions({
+              tabBarStyle: { display: 'none' }
+            });
+          } else {
+            navigation.setOptions({
+              tabBarStyle: {
+                ...navigationConfig.tab.screenOptions.tabBarStyle,
+                paddingBottom: 5,
+                paddingTop: 5,
+              }
+            });
+          }
+        },
       }}
     >
       <Stack.Screen name="HomeMain" component={HomeScreen} />
@@ -52,12 +73,32 @@ const HomeStack = () => {
 };
 
 // Stack navigator for Bookings tab
-const BookingsStack = () => {
+const BookingsStack = ({ navigation, route }) => {
   return (
     <Stack.Navigator
       screenOptions={{
         ...navigationConfig.stack.screenOptions,
         headerShown: false,
+      }}
+      screenListeners={{
+        state: (e) => {
+          // Get the current route name in the stack
+          const routeName = e.data.state.routes[e.data.state.index].name;
+          // Hide tab bar for EnhancedChatScreen
+          if (routeName === 'BookingsChat' || routeName === 'BookingsEnhancedChat') {
+            navigation.setOptions({
+              tabBarStyle: { display: 'none' }
+            });
+          } else {
+            navigation.setOptions({
+              tabBarStyle: {
+                ...navigationConfig.tab.screenOptions.tabBarStyle,
+                paddingBottom: 5,
+                paddingTop: 5,
+              }
+            });
+          }
+        },
       }}
     >
       <Stack.Screen name="BookingsMain" component={BookingsScreen} />

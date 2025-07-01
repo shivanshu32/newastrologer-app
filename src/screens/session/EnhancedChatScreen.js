@@ -488,14 +488,16 @@ const EnhancedChatScreen = ({ route, navigation }) => {
   };
 
   return (
-    <KeyboardAvoidingView 
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
-    >
-      <TouchableWithoutFeedback onPress={dismissKeyboard}>
-        <View style={styles.innerContainer}>
-          <StatusBar barStyle="light-content" backgroundColor="#6B46C1" />
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#6B46C1" />
+      <KeyboardAvoidingView 
+        style={styles.keyboardContainer}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
+      >
+        <TouchableWithoutFeedback onPress={dismissKeyboard}>
+          <View style={styles.innerContainer}>
+
       
       {/* Header */}
       <View style={styles.header}>
@@ -573,9 +575,10 @@ const EnhancedChatScreen = ({ route, navigation }) => {
           <Text style={styles.sendButtonText}>Send</Text>
         </TouchableOpacity>
       </View>
-        </View>
-      </TouchableWithoutFeedback>
-    </KeyboardAvoidingView>
+          </View>
+        </TouchableWithoutFeedback>
+      </KeyboardAvoidingView>
+    </View>
   );
 };
 
@@ -583,6 +586,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F5F5F5',
+  },
+  keyboardContainer: {
+    flex: 1,
   },
   innerContainer: {
     flex: 1,
@@ -653,6 +659,7 @@ const styles = StyleSheet.create({
   messagesList: {
     flex: 1,
     backgroundColor: '#F5F5F5',
+    marginBottom: 0,
   },
   messagesContent: {
     padding: 15,
@@ -722,9 +729,15 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     paddingHorizontal: 15,
     paddingVertical: 10,
+    paddingBottom: Platform.OS === 'ios' ? 10 : 15,
     backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
     borderTopColor: '#E0E0E0',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
   },
   textInput: {
     flex: 1,

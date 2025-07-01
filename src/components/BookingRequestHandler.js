@@ -156,25 +156,47 @@ const BookingRequestHandler = () => {
           
           if (response?.success) {
             console.log(' [SUCCESS] Booking accepted successfully');
-            Alert.alert('DEBUG', 'Socket callback success - about to navigate to WaitingRoom');
             setIsPopupVisible(false);
             setBookingRequest(null);
             
-            // Navigate to WaitingRoom using nested navigation
-            // First navigate to Bookings tab, then to WaitingRoom screen within that stack
-            try {
-              navigation.navigate('Bookings', {
-                screen: 'WaitingRoom',
-                params: { 
-                  bookingId: currentBookingRequest._id,
-                  bookingDetails: currentBookingRequest 
-                }
-              });
-              console.log(' [SUCCESS] Navigation.navigate called successfully');
-              Alert.alert('DEBUG', 'Nested navigation called - Bookings->WaitingRoom');
-            } catch (navError) {
-              console.error(' [ERROR] Navigation failed:', navError);
-              Alert.alert('Navigation Error', 'Failed to navigate to waiting room: ' + navError.message);
+            // Handle different consultation types
+            const consultationType = currentBookingRequest.type;
+            console.log(' [DEBUG] Consultation type:', consultationType);
+            
+            if (consultationType === 'voice') {
+              // For voice consultations, Exotel call should be triggered automatically by backend
+              // Show success message and stay on current screen
+              console.log(' [VOICE] Voice consultation accepted - Exotel call should be triggered by backend');
+              Alert.alert(
+                'Voice Call Accepted', 
+                'The voice consultation has been accepted. The call will be initiated shortly via Exotel. Please wait for the incoming call.',
+                [{ text: 'OK' }]
+              );
+              
+              // Navigate to Home/Dashboard instead of WaitingRoom for voice calls
+              try {
+                navigation.navigate('Home');
+                console.log(' [SUCCESS] Navigated to Home for voice consultation');
+              } catch (navError) {
+                console.error(' [ERROR] Navigation to Home failed:', navError);
+              }
+              
+            } else {
+              // For chat and video consultations, use the traditional WaitingRoom flow
+              console.log(' [DEBUG] Non-voice consultation - navigating to WaitingRoom');
+              try {
+                navigation.navigate('Bookings', {
+                  screen: 'WaitingRoom',
+                  params: { 
+                    bookingId: currentBookingRequest._id,
+                    bookingDetails: currentBookingRequest 
+                  }
+                });
+                console.log(' [SUCCESS] Navigation.navigate called successfully');
+              } catch (navError) {
+                console.error(' [ERROR] Navigation failed:', navError);
+                Alert.alert('Navigation Error', 'Failed to navigate to waiting room: ' + navError.message);
+              }
             }
           } else {
             console.error(' [ERROR] Backend rejected acceptance:', response);
