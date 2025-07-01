@@ -360,7 +360,8 @@ const VideoConsultationScreen = ({ route, navigation }) => {
     }
     
     cleanup();
-    navigation.goBack();
+    // Navigate to Home screen after session end
+    navigation.navigate('Dashboard');
   };
 
   const formatTime = (seconds) => {

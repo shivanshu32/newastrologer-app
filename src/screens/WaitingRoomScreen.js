@@ -92,15 +92,26 @@ const WaitingRoomScreen = () => {
       });
       
       if (isVoiceCall) {
-        console.log('✅ [ASTROLOGER-APP] Navigating to voice consultation');
-        navigation.navigate('BookingsVoiceCall', {
-          booking: bookingDetails,
-          bookingId: bookingId,
-          roomId: data.roomId,
-          sessionId: data.sessionId,
-          userJoinData: data // Pass the user join data to VoiceCallScreen
-        });
-        console.log('✅ [ASTROLOGER-APP] VoiceCall navigation initiated successfully');
+        console.log('✅ [ASTROLOGER-APP] Voice consultation - using Exotel call');
+        // For voice calls, show message and let Exotel handle the call
+        // No navigation to legacy WebRTC screen needed
+        Alert.alert(
+          'Voice Call Connected! 📞',
+          'The user has joined the voice consultation. You will receive a phone call shortly from our system. Please answer the call to connect with the user.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                // Navigate back to dashboard since Exotel will handle the call
+                navigation.navigate('Dashboard');
+              }
+            }
+          ]
+        );
+        
+        // Note: Backend should have already triggered Exotel two-way call
+        // Both user and astrologer will receive actual phone calls
+        console.log('✅ [ASTROLOGER-APP] Exotel voice call flow initiated');
       } else if (isVideoCall) {
         console.log('✅ [ASTROLOGER-APP] Navigating to video consultation');
         navigation.navigate('BookingsVideoCall', {

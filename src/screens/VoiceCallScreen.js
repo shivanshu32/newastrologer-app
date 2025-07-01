@@ -568,8 +568,8 @@ const VoiceCallScreen = () => {
       reason: reason
     });
 
-    // Navigate back with session info
-    navigation.goBack();
+    // Navigate to Home screen after session end
+    navigation.navigate('Dashboard');
   };
 
   // Handle back button

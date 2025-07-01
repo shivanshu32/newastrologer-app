@@ -11,6 +11,8 @@ import {
   Platform,
   Dimensions,
   StatusBar,
+  Keyboard,
+  TouchableWithoutFeedback,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import ChatConnectionManager from '../../utils/ChatConnectionManager';
@@ -30,6 +32,8 @@ const EnhancedChatScreen = ({ route, navigation }) => {
   const [sessionTimer, setSessionTimer] = useState(0);
   const [sessionActive, setSessionActive] = useState(false);
   const [sessionEnded, setSessionEnded] = useState(false);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
   
   // Refs
   const chatManagerRef = useRef(null);
@@ -88,6 +92,34 @@ const EnhancedChatScreen = ({ route, navigation }) => {
       }
     };
   }, [bookingId, astrologerId, sessionId]);
+
+  // Handle keyboard events
+  useEffect(() => {
+    const keyboardDidShowListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
+      (event) => {
+        setKeyboardHeight(event.endCoordinates.height);
+        setIsKeyboardVisible(true);
+        // Scroll to bottom when keyboard shows
+        setTimeout(() => {
+          flatListRef.current?.scrollToEnd({ animated: true });
+        }, 100);
+      }
+    );
+
+    const keyboardDidHideListener = Keyboard.addListener(
+      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
+      () => {
+        setKeyboardHeight(0);
+        setIsKeyboardVisible(false);
+      }
+    );
+
+    return () => {
+      keyboardDidShowListener?.remove();
+      keyboardDidHideListener?.remove();
+    };
+  }, []);
 
   // Handle connection status updates
   const handleConnectionStatus = useCallback((status) => {
@@ -246,13 +278,9 @@ const EnhancedChatScreen = ({ route, navigation }) => {
           {
             text: 'OK',
             onPress: () => {
-              console.log('🔴 [ASTROLOGER-APP] Navigating back after session end');
-              // Navigate back to previous screen
-              if (navigation.canGoBack()) {
-                navigation.goBack();
-              } else {
-                navigation.navigate('Dashboard');
-              }
+              console.log('🔴 [ASTROLOGER-APP] Navigating to Home after session end');
+              // Navigate to Home screen after session end
+              navigation.navigate('Dashboard');
             }
           }
         ],
@@ -454,12 +482,20 @@ const EnhancedChatScreen = ({ route, navigation }) => {
     );
   };
 
+  // Dismiss keyboard when tapping outside
+  const dismissKeyboard = () => {
+    Keyboard.dismiss();
+  };
+
   return (
     <KeyboardAvoidingView 
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
     >
-      <StatusBar barStyle="light-content" backgroundColor="#6B46C1" />
+      <TouchableWithoutFeedback onPress={dismissKeyboard}>
+        <View style={styles.innerContainer}>
+          <StatusBar barStyle="light-content" backgroundColor="#6B46C1" />
       
       {/* Header */}
       <View style={styles.header}>
@@ -537,6 +573,8 @@ const EnhancedChatScreen = ({ route, navigation }) => {
           <Text style={styles.sendButtonText}>Send</Text>
         </TouchableOpacity>
       </View>
+        </View>
+      </TouchableWithoutFeedback>
     </KeyboardAvoidingView>
   );
 };
@@ -545,6 +583,9 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F5F5F5',
+  },
+  innerContainer: {
+    flex: 1,
   },
   header: {
     flexDirection: 'row',
