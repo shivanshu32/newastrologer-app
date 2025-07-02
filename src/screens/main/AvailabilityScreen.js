@@ -1,178 +1,148 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   View,
   Text,
   TouchableOpacity,
+  ScrollView,
   Switch,
   ActivityIndicator,
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
-import { SocketContext } from '../../context/SocketContext';
-import api from '../../services/api';
+
+const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+const TIME_SLOTS = [
+  '09:00 AM - 12:00 PM',
+  '12:00 PM - 03:00 PM',
+  '03:00 PM - 06:00 PM',
+  '06:00 PM - 09:00 PM',
+  '09:00 PM - 12:00 AM',
+];
 
 const AvailabilityScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [consultationAvailability, setConsultationAvailability] = useState({
-    chat: true,
-    voiceCall: true,
-  });
-  
+  const [availability, setAvailability] = useState({});
   const { user } = useAuth();
-  const { socket } = useContext(SocketContext);
 
   useEffect(() => {
-    fetchConsultationAvailability();
-    
-    // Set up socket event listeners for availability updates
-    if (socket) {
-      const handleAvailabilityUpdated = (data) => {
-        console.log('Consultation availability updated confirmation:', data);
-        if (data.success) {
-          setSaving(false);
-          // Update local state with confirmed data
-          setConsultationAvailability(data.consultationAvailability);
-        }
-      };
-      
-      const handleError = (error) => {
-        console.error('Socket error:', error);
-        setSaving(false);
-        Alert.alert('Error', error.message || 'Failed to update availability');
-      };
-      
-      socket.on('consultation_availability_updated', handleAvailabilityUpdated);
-      socket.on('error', handleError);
-      
-      // Cleanup listeners on unmount
-      return () => {
-        socket.off('consultation_availability_updated', handleAvailabilityUpdated);
-        socket.off('error', handleError);
-      };
-    }
-  }, [socket]);
+    fetchAvailability();
+  }, []);
 
-  const fetchConsultationAvailability = async () => {
+  const fetchAvailability = async () => {
     try {
-      setLoading(true);
-      console.log('Fetching consultation availability for astrologer:', user?.id);
+      // In a real app, this would call your backend API
+      // const response = await axios.get(`${API_URL}/astrologer/availability`);
+      // setAvailability(response.data);
       
-      // Get current astrologer data which includes consultationAvailability
-      const response = await api.get(`/astrologers/${user.id}`);
+      // Simulate API call with dummy data
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
-      if (response.data.success && response.data.data.consultationAvailability) {
-        setConsultationAvailability(response.data.data.consultationAvailability);
-        console.log('Loaded consultation availability:', response.data.data.consultationAvailability);
-      } else {
-        // Default values if not set
-        setConsultationAvailability({ chat: true, voiceCall: true });
-        console.log('Using default consultation availability');
-      }
-    } catch (error) {
-      console.log('Error fetching consultation availability:', error);
-      Alert.alert('Error', 'Failed to load availability settings. Please try again.');
-      // Use defaults on error
-      setConsultationAvailability({ chat: true, voiceCall: true });
-    } finally {
+      // Generate dummy availability data
+      const dummyAvailability = {};
+      DAYS.forEach(day => {
+        dummyAvailability[day] = {};
+        TIME_SLOTS.forEach(slot => {
+          // Randomly set some slots as available
+          dummyAvailability[day][slot] = Math.random() > 0.5;
+        });
+      });
+      
+      setAvailability(dummyAvailability);
       setLoading(false);
+    } catch (error) {
+      console.log('Error fetching availability:', error);
+      setLoading(false);
+      Alert.alert('Error', 'Failed to load availability data. Please try again.');
     }
   };
 
-  const handleToggleConsultation = async (type) => {
-    if (saving) return; // Prevent multiple simultaneous updates
-    
-    const newValue = !consultationAvailability[type];
-    
-    // Optimistically update UI
-    setConsultationAvailability(prev => ({
+  const handleToggleSlot = (day, slot) => {
+    setAvailability(prev => ({
       ...prev,
-      [type]: newValue
+      [day]: {
+        ...prev[day],
+        [slot]: !prev[day][slot],
+      },
     }));
+  };
 
+  const handleToggleDay = (day) => {
+    const isAllAvailable = Object.values(availability[day]).every(Boolean);
+    
+    setAvailability(prev => ({
+      ...prev,
+      [day]: Object.keys(prev[day]).reduce((acc, slot) => {
+        acc[slot] = !isAllAvailable;
+        return acc;
+      }, {}),
+    }));
+  };
+
+  const handleSaveAvailability = async () => {
     try {
       setSaving(true);
-      console.log(`Toggling ${type} consultation to:`, newValue);
       
-      const updatedAvailability = {
-        ...consultationAvailability,
-        [type]: newValue
-      };
-
-      // Use socket-first approach for real-time sync
-      if (socket) {
-        socket.emit('consultation_availability_changed', {
-          astrologerId: user.id,
-          consultationAvailability: updatedAvailability
-        });
-        console.log('Emitted consultation availability change event to socket');
-        
-        // Show success feedback (saving state will be cleared by socket response)
-        Alert.alert(
-          'Updated', 
-          `${type === 'chat' ? 'Chat' : 'Voice Call'} consultation ${newValue ? 'enabled' : 'disabled'} successfully.`
-        );
-      } else {
-        // Fallback to API if socket not available
-        const response = await api.put('/astrologers/consultation-availability', updatedAvailability);
-        
-        if (response.data.success) {
-          console.log('Successfully updated consultation availability via API:', response.data.data);
-          setSaving(false);
-          
-          Alert.alert(
-            'Updated', 
-            `${type === 'chat' ? 'Chat' : 'Voice Call'} consultation ${newValue ? 'enabled' : 'disabled'} successfully.`
-          );
-        } else {
-          throw new Error('Failed to update availability');
-        }
-      }
-    } catch (error) {
-      console.log('Error updating consultation availability:', error);
+      // In a real app, this would call your backend API
+      // await axios.post(`${API_URL}/astrologer/availability`, availability);
+      
+      // Simulate API call
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      
       setSaving(false);
-      
-      // Revert optimistic update on error
-      setConsultationAvailability(prev => ({
-        ...prev,
-        [type]: !newValue
-      }));
-      
-      Alert.alert(
-        'Error', 
-        'Failed to update availability. Please try again.'
-      );
+      Alert.alert('Success', 'Your availability has been updated successfully.');
+    } catch (error) {
+      console.log('Error saving availability:', error);
+      setSaving(false);
+      Alert.alert('Error', 'Failed to save availability. Please try again.');
     }
   };
 
-  const renderConsultationToggle = (type, title, description, icon) => {
-    const isEnabled = consultationAvailability[type];
+  const isDayAvailable = (day) => {
+    return Object.values(availability[day] || {}).some(Boolean);
+  };
+
+  const renderTimeSlot = (day, slot) => {
+    const isAvailable = availability[day]?.[slot] || false;
     
     return (
-      <View style={styles.consultationCard}>
-        <View style={styles.consultationHeader}>
-          <View style={styles.consultationIconContainer}>
-            <Ionicons name={icon} size={24} color="#F97316" />
-          </View>
-          <View style={styles.consultationInfo}>
-            <Text style={styles.consultationTitle}>{title}</Text>
-            <Text style={styles.consultationDescription}>{description}</Text>
-          </View>
-          <Switch
-            value={isEnabled}
-            onValueChange={() => handleToggleConsultation(type)}
-            trackColor={{ false: '#e5e5e5', true: '#fef3e2' }}
-            thumbColor={isEnabled ? '#F97316' : '#f4f3f4'}
-            ios_backgroundColor="#e5e5e5"
-          />
+      <View key={slot} style={styles.slotContainer}>
+        <Text style={styles.slotText}>{slot}</Text>
+        <Switch
+          value={isAvailable}
+          onValueChange={() => handleToggleSlot(day, slot)}
+          trackColor={{ false: '#ccc', true: '#8A2BE2' }}
+          thumbColor="#fff"
+        />
+      </View>
+    );
+  };
+
+  const renderDay = (day) => {
+    return (
+      <View key={day} style={styles.dayContainer}>
+        <View style={styles.dayHeader}>
+          <Text style={styles.dayTitle}>{day}</Text>
+          <TouchableOpacity
+            style={[
+              styles.toggleButton,
+              isDayAvailable(day) ? styles.toggleButtonActive : {},
+            ]}
+            onPress={() => handleToggleDay(day)}
+          >
+            <Text style={[
+              styles.toggleButtonText,
+              isDayAvailable(day) ? styles.toggleButtonTextActive : {},
+            ]}>
+              {isDayAvailable(day) ? 'Available' : 'Unavailable'}
+            </Text>
+          </TouchableOpacity>
         </View>
         
-        <View style={[styles.statusIndicator, isEnabled ? styles.statusEnabled : styles.statusDisabled]}>
-          <Text style={[styles.statusText, isEnabled ? styles.statusTextEnabled : styles.statusTextDisabled]}>
-            {isEnabled ? 'Available for bookings' : 'Not accepting bookings'}
-          </Text>
+        <View style={styles.slotsContainer}>
+          {TIME_SLOTS.map(slot => renderTimeSlot(day, slot))}
         </View>
       </View>
     );
@@ -192,41 +162,35 @@ const AvailabilityScreen = ({ navigation }) => {
       
       {loading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#F97316" />
-          <Text style={styles.loadingText}>Loading availability settings...</Text>
+          <ActivityIndicator size="large" color="#8A2BE2" />
+          <Text style={styles.loadingText}>Loading availability...</Text>
         </View>
       ) : (
-        <View style={styles.content}>
-          <Text style={styles.subtitle}>
-            Control which consultation types you want to offer to clients
-          </Text>
-          
-          {renderConsultationToggle(
-            'chat',
-            'Chat Consultation',
-            'Text-based consultations with clients',
-            'chatbubble-ellipses'
-          )}
-          
-          {renderConsultationToggle(
-            'voiceCall',
-            'Voice Call Consultation', 
-            'Voice-based consultations with clients',
-            'call'
-          )}
-          
-          <View style={styles.infoCard}>
-            <View style={styles.infoHeader}>
-              <Ionicons name="information-circle" size={20} color="#F97316" />
-              <Text style={styles.infoTitle}>How it works</Text>
-            </View>
-            <Text style={styles.infoText}>
-              • When you disable a consultation type, clients won't see that option on your profile{"\n"}
-              • Changes are applied immediately and sync across all platforms{"\n"}
-              • You can enable/disable these anytime based on your availability
+        <>
+          <ScrollView style={styles.content}>
+            <Text style={styles.subtitle}>
+              Set your weekly availability for consultations
             </Text>
+            
+            {DAYS.map(day => renderDay(day))}
+            
+            <View style={styles.spacer} />
+          </ScrollView>
+          
+          <View style={styles.footer}>
+            <TouchableOpacity
+              style={styles.saveButton}
+              onPress={handleSaveAvailability}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.saveButtonText}>Save Availability</Text>
+              )}
+            </TouchableOpacity>
           </View>
-        </View>
+        </>
       )}
     </View>
   );
@@ -238,7 +202,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8f8f8',
   },
   header: {
-    backgroundColor: '#F97316',
+    backgroundColor: '#8A2BE2',
     paddingTop: 50,
     paddingBottom: 20,
     paddingHorizontal: 20,
@@ -270,92 +234,87 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 16,
     color: '#666',
-    marginBottom: 30,
-    textAlign: 'center',
-  },
-  consultationCard: {
-    backgroundColor: '#fff',
-    borderRadius: 12,
     marginBottom: 20,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
   },
-  consultationHeader: {
+  dayContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    marginBottom: 15,
+    padding: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
+  },
+  dayHeader: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 15,
+    paddingBottom: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
   },
-  consultationIconContainer: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    backgroundColor: '#fef3e2',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 15,
-  },
-  consultationInfo: {
-    flex: 1,
-  },
-  consultationTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333',
-    marginBottom: 4,
-  },
-  consultationDescription: {
-    fontSize: 14,
-    color: '#666',
-  },
-  statusIndicator: {
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 20,
-    alignItems: 'center',
-  },
-  statusEnabled: {
-    backgroundColor: '#e6fff0',
-  },
-  statusDisabled: {
-    backgroundColor: '#fef2f2',
-  },
-  statusText: {
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  statusTextEnabled: {
-    color: '#059669',
-  },
-  statusTextDisabled: {
-    color: '#dc2626',
-  },
-  infoCard: {
-    backgroundColor: '#fef3e2',
-    borderRadius: 12,
-    padding: 20,
-    marginTop: 20,
-    borderLeftWidth: 4,
-    borderLeftColor: '#F97316',
-  },
-  infoHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  infoTitle: {
+  dayTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#F97316',
-    marginLeft: 8,
   },
-  infoText: {
+  toggleButton: {
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 15,
+    backgroundColor: '#f0f0f0',
+  },
+  toggleButtonActive: {
+    backgroundColor: '#e6fff0',
+  },
+  toggleButtonText: {
+    fontSize: 12,
+    color: '#666',
+  },
+  toggleButtonTextActive: {
+    color: '#00a854',
+    fontWeight: 'bold',
+  },
+  slotsContainer: {
+    marginLeft: 10,
+  },
+  slotContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  slotText: {
     fontSize: 14,
-    color: '#92400e',
-    lineHeight: 20,
+    color: '#333',
+  },
+  spacer: {
+    height: 80,
+  },
+  footer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    padding: 20,
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+  },
+  saveButton: {
+    backgroundColor: '#8A2BE2',
+    paddingVertical: 15,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  saveButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
 });
 
