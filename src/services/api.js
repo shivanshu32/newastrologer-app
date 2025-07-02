@@ -64,4 +64,9 @@ export const earningsAPI = {
   getTransactions: () => API.get('/astrologers/transactions'),
 };
 
+// Wallet API
+export const walletAPI = {
+  getBalance: () => API.get('/wallet/balance'),
+};
+
 export default API;

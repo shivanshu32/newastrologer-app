@@ -14,19 +14,46 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as Sentry from '@sentry/react-native';
 import { useAuth } from '../../context/AuthContext';
-import { bookingsAPI } from '../../services/api';
+import { bookingsAPI, walletAPI, sessionsAPI } from '../../services/api';
 import { listenForBookingRequests, respondToBookingRequest } from '../../services/socketService';
 import { SocketContext } from '../../context/SocketContext';
+import { useFocusEffect } from '@react-navigation/native';
 
 const HomeScreen = ({ navigation }) => {
   const [pendingBookings, setPendingBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [statusLoading, setStatusLoading] = useState(false);
+  const [walletBalance, setWalletBalance] = useState(0);
+  const [loadingWallet, setLoadingWallet] = useState(false);
   const { user, updateStatus } = useAuth();
   const { socket, isConnected } = useContext(SocketContext);
   
+  // Fetch wallet balance
+  const fetchWalletBalance = async () => {
+    try {
+      setLoadingWallet(true);
+      const response = await walletAPI.getBalance();
+      console.log('Wallet balance response:', response.data);
+      
+      if (response.data && response.data.success) {
+        const balance = response.data.data?.balance || 0;
+        setWalletBalance(balance);
+        console.log('Wallet balance updated:', balance);
+      } else {
+        console.log('Invalid wallet response, setting balance to 0');
+        setWalletBalance(0);
+      }
+    } catch (error) {
+      console.error('Error fetching wallet balance:', error);
+      setWalletBalance(0);
+    } finally {
+      setLoadingWallet(false);
+    }
+  };
+  
   useEffect(() => {
     fetchPendingBookings();
+    fetchWalletBalance();
     
     // Set up socket listener for real-time booking requests
     let cleanup;
@@ -66,18 +93,30 @@ const HomeScreen = ({ navigation }) => {
       if (cleanup) cleanup();
     };
   }, [socket, isConnected]);
+  
+  // Refresh wallet balance when screen is focused
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log('HomeScreen focused, refreshing wallet balance');
+      fetchWalletBalance();
+    }, [])
+  );
 
   const fetchPendingBookings = async () => {
     try {
       setLoading(true);
       
-      // Call backend API to fetch pending bookings
-      const response = await bookingsAPI.getAll('pending');
+      // Fetch both pending bookings and active sessions in parallel
+      const [bookingsResponse, sessionsResponse] = await Promise.all([
+        bookingsAPI.getAll('pending'),
+        sessionsAPI.getActive()
+      ]);
       
-      if (response.data && response.data.data && Array.isArray(response.data.data)) {
-        // Transform the data to match the expected format with robust validation
-        const bookings = response.data.data.map(booking => {
-          // Skip invalid bookings
+      let allItems = [];
+      
+      // Process pending bookings
+      if (bookingsResponse.data && bookingsResponse.data.data && Array.isArray(bookingsResponse.data.data)) {
+        const bookings = bookingsResponse.data.data.map(booking => {
           if (!booking) return null;
           
           try {
@@ -87,27 +126,55 @@ const HomeScreen = ({ navigation }) => {
               userName: (booking.user && booking.user.name) || 'User',
               userImage: (booking.user && booking.user.profileImage) || 'https://via.placeholder.com/100',
               type: booking.type || 'chat',
-              status: booking.status || 'pending',
+              status: 'pending',
               requestedTime: booking.createdAt || new Date().toISOString(),
+              itemType: 'booking', // Distinguish from sessions
             };
           } catch (err) {
             console.error('Error processing booking item:', err);
             return null;
           }
-        }).filter(booking => booking !== null); // Remove any null entries
+        }).filter(booking => booking !== null);
         
-        setPendingBookings(bookings);
-      } else {
-        // If no bookings found or invalid data structure, set empty array
-        console.log('No valid bookings data found in response');
-        setPendingBookings([]);
+        allItems = [...allItems, ...bookings];
       }
       
+      // Process active sessions
+      if (sessionsResponse.data && sessionsResponse.data.data && Array.isArray(sessionsResponse.data.data)) {
+        const sessions = sessionsResponse.data.data.map(session => {
+          if (!session || !session.booking) return null;
+          
+          try {
+            const booking = session.booking;
+            return {
+              id: session._id || `session-${Date.now()}`,
+              sessionId: session._id,
+              userId: (booking.user && booking.user._id) || 'unknown',
+              userName: (booking.user && booking.user.name) || 'User',
+              userImage: (booking.user && booking.user.profileImage) || 'https://via.placeholder.com/100',
+              type: booking.type || 'chat',
+              status: 'in_progress',
+              requestedTime: session.startTime || session.createdAt || new Date().toISOString(),
+              itemType: 'session', // Distinguish from bookings
+              duration: session.duration || 0,
+            };
+          } catch (err) {
+            console.error('Error processing session item:', err);
+            return null;
+          }
+        }).filter(session => session !== null);
+        
+        allItems = [...allItems, ...sessions];
+      }
+      
+      // Sort by requested time (newest first)
+      allItems.sort((a, b) => new Date(b.requestedTime) - new Date(a.requestedTime));
+      
+      setPendingBookings(allItems);
       setLoading(false);
     } catch (error) {
-      console.error('Error fetching pending bookings:', error);
+      console.error('Error fetching pending bookings and active sessions:', error);
       setLoading(false);
-      // In case of error, set empty bookings array
       setPendingBookings([]);
     }
   };
@@ -200,9 +267,21 @@ const HomeScreen = ({ navigation }) => {
     navigation.navigate('Availability');
   };
 
+  const handleJoinSession = (item) => {
+    // Navigate to the appropriate screen based on session type
+    if (item.type === 'chat') {
+      navigation.navigate('HomeChat', { bookingId: item.id, sessionId: item.sessionId });
+    } else if (item.type === 'video') {
+      navigation.navigate('HomeVideoCall', { bookingId: item.id, sessionId: item.sessionId });
+    } else if (item.type === 'voice') {
+      navigation.navigate('HomeVoiceCall', { bookingId: item.id, sessionId: item.sessionId });
+    }
+  };
+
   const renderBookingItem = ({ item }) => {
     const requestedTime = new Date(item.requestedTime);
     const scheduledTime = item.scheduledAt ? new Date(item.scheduledAt) : null;
+    const isActiveSession = item.itemType === 'session';
     
     return (
       <View style={styles.bookingCard}>
@@ -230,12 +309,17 @@ const HomeScreen = ({ navigation }) => {
                 </Text>
               </View>
               <Text style={styles.timeAgo}>
-                Requested {Math.floor((new Date() - requestedTime) / 60000)} min ago
+                {isActiveSession 
+                  ? `Started ${Math.floor((new Date() - requestedTime) / 60000)} min ago`
+                  : `Requested ${Math.floor((new Date() - requestedTime) / 60000)} min ago`
+                }
               </Text>
             </View>
           </View>
-          <View style={styles.bookingBadge}>
-            <Text style={styles.badgeText}>NEW</Text>
+          <View style={[styles.bookingBadge, isActiveSession && styles.activeBadge]}>
+            <Text style={[styles.badgeText, isActiveSession && styles.activeBadgeText]}>
+              {isActiveSession ? 'ACTIVE' : 'NEW'}
+            </Text>
           </View>
         </View>
         
@@ -274,23 +358,38 @@ const HomeScreen = ({ navigation }) => {
           )}
         </View>
         
+        {/* Different action buttons based on item type */}
         <View style={styles.actionButtons}>
-          <TouchableOpacity
-            style={[styles.actionButton, styles.rejectButton]}
-            onPress={() => handleRejectBooking(item)}
-            disabled={loading}
-          >
-            <Ionicons name="close-circle" size={18} color="#FF5252" />
-            <Text style={styles.rejectButtonText}>Decline</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.actionButton, styles.acceptButton]}
-            onPress={() => handleAcceptBooking(item)}
-            disabled={loading}
-          >
-            <Ionicons name="checkmark-circle" size={18} color="#fff" />
-            <Text style={styles.acceptButtonText}>Accept</Text>
-          </TouchableOpacity>
+          {isActiveSession ? (
+            // Active session - show join button
+            <TouchableOpacity
+              style={[styles.actionButton, styles.joinButton]}
+              onPress={() => handleJoinSession(item)}
+            >
+              <Ionicons name="arrow-forward-circle" size={18} color="#fff" />
+              <Text style={styles.joinButtonText}>Continue Session</Text>
+            </TouchableOpacity>
+          ) : (
+            // Pending booking - show accept/decline buttons
+            <>
+              <TouchableOpacity
+                style={[styles.actionButton, styles.rejectButton]}
+                onPress={() => handleRejectBooking(item)}
+                disabled={loading}
+              >
+                <Ionicons name="close-circle" size={18} color="#FF5252" />
+                <Text style={styles.rejectButtonText}>Decline</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.actionButton, styles.acceptButton]}
+                onPress={() => handleAcceptBooking(item)}
+                disabled={loading}
+              >
+                <Ionicons name="checkmark-circle" size={18} color="#fff" />
+                <Text style={styles.acceptButtonText}>Accept</Text>
+              </TouchableOpacity>
+            </>
+          )}
         </View>
       </View>
     );
@@ -321,10 +420,19 @@ const HomeScreen = ({ navigation }) => {
       </View>
       
       <View style={styles.statsContainer}>
-        <View style={styles.statCard}>
-          <Text style={styles.statValue}>₹{user?.walletBalance || 0}</Text>
-          <Text style={styles.statLabel}>Earnings</Text>
-        </View>
+        <TouchableOpacity 
+          style={[styles.statCard, styles.walletCard]} 
+          onPress={() => navigation.navigate('Wallet')}
+          activeOpacity={0.7}
+        >
+          <View style={styles.walletContainer}>
+            <Ionicons name="wallet-outline" size={20} color="#F97316" />
+            <Text style={styles.walletBalance}>
+              ₹{loadingWallet ? '...' : walletBalance.toFixed(2)}
+            </Text>
+          </View>
+          <Text style={styles.statLabel}>Wallet Balance</Text>
+        </TouchableOpacity>
         <View style={styles.statCard}>
           <Text style={styles.statValue}>{typeof user?.rating === 'object' ? (user?.rating?.average || 0) : (user?.rating || 0)}</Text>
           <Text style={styles.statLabel}>Rating</Text>
@@ -442,6 +550,21 @@ const styles = StyleSheet.create({
   statLabel: {
     fontSize: 12,
     color: '#666',
+  },
+  walletCard: {
+    borderColor: '#F97316',
+    borderWidth: 1,
+  },
+  walletContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 5,
+  },
+  walletBalance: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#F97316',
+    marginLeft: 8,
   },
   availabilityButton: {
     flexDirection: 'row',
@@ -603,6 +726,21 @@ const styles = StyleSheet.create({
     backgroundColor: '#8A2BE2',
   },
   acceptButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    marginLeft: 5,
+  },
+  activeBadge: {
+    backgroundColor: '#4CAF50',
+  },
+  activeBadgeText: {
+    color: '#fff',
+  },
+  joinButton: {
+    backgroundColor: '#F97316',
+    flex: 1,
+  },
+  joinButtonText: {
     color: '#fff',
     fontWeight: 'bold',
     marginLeft: 5,
