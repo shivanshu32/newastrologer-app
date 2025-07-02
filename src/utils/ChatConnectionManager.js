@@ -1,4 +1,4 @@
-import { AppState } from 'react-native';
+import { AppState, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import io from 'socket.io-client';
 
@@ -220,6 +220,41 @@ class ChatConnectionManager {
       if (data.bookingId === this.currentBookingId) {
         this.notifyConnectionStatus('astrologer_joined', 'You joined the consultation');
         this.notifyStatusUpdate({ type: 'astrologer_joined', data });
+      }
+    });
+
+    // Voice call failure notification - Global handler (works regardless of current screen)
+    this.socket.on('call_failure_notification', (data) => {
+      console.log(' [ASTROLOGER-APP] Call failure notification received:', data);
+      console.log(' [ASTROLOGER-APP] Current booking ID:', this.currentBookingId);
+      console.log(' [ASTROLOGER-APP] Event booking ID:', data.bookingId);
+      
+      // Show global alert regardless of current screen or booking context
+      console.log(' [ASTROLOGER-APP] Showing global call failure alert');
+      Alert.alert(
+        data.title || 'Call Failed',
+        data.message || 'The voice call could not be completed.',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              console.log(' [ASTROLOGER-APP] Astrologer acknowledged call failure notification');
+            }
+          }
+        ],
+        { cancelable: false }
+      );
+      
+      // Also notify status update if there's an active booking context
+      if (data.bookingId === this.currentBookingId) {
+        console.log(' [ASTROLOGER-APP] Also sending status update for active booking');
+        this.notifyStatusUpdate({ 
+          type: 'call_failure', 
+          data,
+          title: data.title,
+          message: data.message,
+          failureReason: data.failureReason
+        });
       }
     });
   }
