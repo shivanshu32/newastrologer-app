@@ -280,7 +280,7 @@ const EnhancedChatScreen = ({ route, navigation }) => {
             onPress: () => {
               console.log('🔴 [ASTROLOGER-APP] Navigating to Home after session end');
               // Navigate to Home screen after session end
-              navigation.navigate('Dashboard');
+              navigation.navigate('Home');
             }
           }
         ],

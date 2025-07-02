@@ -103,7 +103,7 @@ const WaitingRoomScreen = () => {
               text: 'OK',
               onPress: () => {
                 // Navigate back to dashboard since Exotel will handle the call
-                navigation.navigate('Dashboard');
+                navigation.navigate('Home');
               }
             }
           ]
@@ -194,7 +194,7 @@ const WaitingRoomScreen = () => {
             text: 'Go Back',
             onPress: () => {
               // Navigate back to dashboard when call fails
-              navigation.navigate('Dashboard');
+              navigation.navigate('Home');
             }
           }
         ]

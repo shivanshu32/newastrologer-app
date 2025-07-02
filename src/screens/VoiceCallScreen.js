@@ -569,7 +569,7 @@ const VoiceCallScreen = () => {
     });
 
     // Navigate to Home screen after session end
-    navigation.navigate('Dashboard');
+    navigation.navigate('Home');
   };
 
   // Handle back button

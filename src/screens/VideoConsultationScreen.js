@@ -361,7 +361,7 @@ const VideoConsultationScreen = ({ route, navigation }) => {
     
     cleanup();
     // Navigate to Home screen after session end
-    navigation.navigate('Dashboard');
+    navigation.navigate('Home');
   };
 
   const formatTime = (seconds) => {
