@@ -401,21 +401,24 @@ const HomeScreen = ({ navigation }) => {
         <View style={styles.headerContent}>
           <View>
             <Text style={styles.welcomeText}>Welcome back,</Text>
-            <Text style={styles.astrologerName}>{user?.name || 'Astrologer'}</Text>
+            <Text style={styles.astrologerName}>{user?.displayName || user?.name || 'Astrologer'}</Text>
           </View>
           
-          <View style={styles.statusContainer}>
-            <Text style={styles.statusLabel}>
-              {user?.online ? 'Online' : 'Offline'}
-            </Text>
-            <Switch
-              value={user?.online}
-              onValueChange={handleStatusChange}
-              disabled={statusLoading}
-              trackColor={{ false: '#ccc', true: '#8A2BE2' }}
-              thumbColor="#fff"
-            />
-          </View>
+          <TouchableOpacity 
+            style={styles.headerWalletContainer} 
+            onPress={() => navigation.navigate('Wallet')}
+            activeOpacity={0.7}
+          >
+            <View style={styles.headerWalletContent}>
+              <Ionicons name="wallet-outline" size={24} color="#F97316" />
+              <View style={styles.headerWalletText}>
+                <Text style={styles.headerWalletBalance}>
+                  ₹{loadingWallet ? '...' : walletBalance.toFixed(2)}
+                </Text>
+                <Text style={styles.headerWalletLabel}>Wallet</Text>
+              </View>
+            </View>
+          </TouchableOpacity>
         </View>
       </View>
       
@@ -509,18 +512,27 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#fff',
   },
-  statusContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  headerWalletContainer: {
     backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    paddingVertical: 5,
-    paddingHorizontal: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
     borderRadius: 20,
   },
-  statusLabel: {
+  headerWalletContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  headerWalletText: {
+    marginLeft: 8,
+  },
+  headerWalletBalance: {
     color: '#fff',
-    marginRight: 10,
+    fontSize: 16,
     fontWeight: 'bold',
+  },
+  headerWalletLabel: {
+    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 12,
   },
   statsContainer: {
     flexDirection: 'row',
