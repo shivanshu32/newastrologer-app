@@ -102,11 +102,14 @@ export const SocketProvider = ({ children }) => {
       
       // Socket connection event handlers
       newSocket.on('connect', () => {
-        console.log(' [SocketContext] Socket connected successfully');
-        console.log(' [SocketContext] Socket ID:', newSocket.id);
-        console.log(' [SocketContext] Socket transport:', newSocket.io?.engine?.transport?.name);
-        console.log(' [SocketContext] Socket authenticated:', newSocket.auth);
-        console.log(' [SocketContext] Connection timestamp:', new Date().toISOString());
+        console.log('✅ [SocketContext] Socket connected successfully');
+        console.log('🔍 [SocketContext] Socket ID:', newSocket.id);
+        console.log('🔍 [SocketContext] Socket transport:', newSocket.io?.engine?.transport?.name);
+        console.log('🔍 [SocketContext] Socket authenticated:', newSocket.auth);
+        console.log('🔍 [SocketContext] Connection timestamp:', new Date().toISOString());
+        console.log('🔍 [SocketContext] Astrologer ID:', astrologerId);
+        console.log('🔍 [SocketContext] Previous socket ID:', socket?.id || 'none');
+        console.log('🔍 [SocketContext] Socket ID changed:', socket?.id !== newSocket.id);
         
         setIsConnected(true);
         setIsConnecting(false);
