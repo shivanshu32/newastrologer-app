@@ -112,47 +112,62 @@ const HomeScreen = ({ navigation }) => {
         sessionsAPI.getActive()
       ]);
       
-      let allItems = [];
+      let chatItems = [];
       
-      // Process pending bookings - only show new requests
+      // Process pending bookings - ONLY CHAT consultations with refined logic
       if (bookingsResponse.data && bookingsResponse.data.data && Array.isArray(bookingsResponse.data.data)) {
-        const bookings = bookingsResponse.data.data
+        const chatBookings = bookingsResponse.data.data
           .filter(booking => {
-            // Only include bookings that are truly pending/new requests
-            const validStatuses = ['pending', 'confirmed', 'waiting_for_user'];
-            return booking && validStatuses.includes(booking.status);
+            // ONLY include chat bookings with specific statuses
+            if (!booking || booking.type !== 'chat') return false;
+            
+            // Two categories:
+            // 1. User-initiated awaiting astrologer response: 'confirmed', 'pending'
+            // 2. Astrologer accepted ongoing: 'accepted'
+            const validStatuses = ['pending', 'confirmed', 'accepted'];
+            return validStatuses.includes(booking.status);
           })
           .map(booking => {
             if (!booking) return null;
             
             try {
+              // Determine display state based on status
+              const isAwaitingResponse = ['pending', 'confirmed'].includes(booking.status);
+              const isAcceptedChat = booking.status === 'accepted';
+              
               return {
                 id: booking._id || `temp-${Date.now()}`,
                 userId: (booking.user && booking.user._id) || 'unknown',
                 userName: (booking.user && booking.user.name) || 'User',
                 userImage: 'https://freesvg.org/img/abstract-user-flat-4.png',
-                type: booking.type || 'chat',
-                status: booking.status || 'pending', // Use actual status from backend
+                type: 'chat', // Always chat for this section
+                status: booking.status,
                 requestedTime: booking.createdAt || new Date().toISOString(),
-                itemType: 'booking', // Distinguish from sessions
-                rate: booking.rate || 0, // Add rate for per minute display
+                itemType: 'booking',
+                rate: booking.rate || 0,
+                // New fields for refined display logic
+                isAwaitingResponse,
+                isAcceptedChat,
+                displayState: isAwaitingResponse ? 'awaiting_response' : 'accepted_chat'
               };
             } catch (err) {
-              console.error('Error processing booking item:', err);
+              console.error('Error processing chat booking item:', err);
               return null;
             }
           }).filter(booking => booking !== null);
         
-        allItems = [...allItems, ...bookings];
+        chatItems = [...chatItems, ...chatBookings];
       }
       
-      // Process active sessions - only show truly active ones
+      // Process active sessions - ONLY CHAT sessions that are truly in progress
       if (sessionsResponse.data && sessionsResponse.data.data && Array.isArray(sessionsResponse.data.data)) {
-        const sessions = sessionsResponse.data.data
+        const chatSessions = sessionsResponse.data.data
           .filter(session => {
-            // Only include sessions that are truly in progress
+            // Only include CHAT sessions that are truly in progress
+            if (!session || !session.booking || session.booking.type !== 'chat') return false;
+            
             const validStatuses = ['in_progress', 'active', 'ongoing'];
-            return session && session.status && validStatuses.includes(session.status);
+            return validStatuses.includes(session.status);
           })
           .map(session => {
             if (!session || !session.booking) return null;
@@ -165,28 +180,39 @@ const HomeScreen = ({ navigation }) => {
                 userId: (booking.user && booking.user._id) || 'unknown',
                 userName: (booking.user && booking.user.name) || 'User',
                 userImage: 'https://freesvg.org/img/abstract-user-flat-4.png',
-                type: booking.type || 'chat',
-                status: session.status || 'in_progress', // Use actual session status
+                type: 'chat',
+                status: session.status,
                 requestedTime: session.startTime || session.createdAt || new Date().toISOString(),
-                itemType: 'session', // Distinguish from bookings
+                itemType: 'session',
                 duration: session.duration || 0,
+                // Mark as active session for join button
+                isAwaitingResponse: false,
+                isAcceptedChat: false,
+                displayState: 'active_session'
               };
             } catch (err) {
-              console.error('Error processing session item:', err);
+              console.error('Error processing chat session item:', err);
               return null;
             }
           }).filter(session => session !== null);
         
-        allItems = [...allItems, ...sessions];
+        chatItems = [...chatItems, ...chatSessions];
       }
       
       // Sort by requested time (newest first)
-      allItems.sort((a, b) => new Date(b.requestedTime) - new Date(a.requestedTime));
+      chatItems.sort((a, b) => new Date(b.requestedTime) - new Date(a.requestedTime));
       
-      setPendingBookings(allItems);
+      console.log('Filtered chat items:', chatItems.map(item => ({
+        id: item.id,
+        status: item.status,
+        displayState: item.displayState,
+        type: item.type
+      })));
+      
+      setPendingBookings(chatItems);
       setLoading(false);
     } catch (error) {
-      console.error('Error fetching pending bookings and active sessions:', error);
+      console.error('Error fetching pending chat bookings and active sessions:', error);
       setLoading(false);
       setPendingBookings([]);
     }
@@ -294,7 +320,49 @@ const HomeScreen = ({ navigation }) => {
   const renderBookingItem = ({ item }) => {
     const requestedTime = new Date(item.requestedTime);
     const scheduledTime = item.scheduledAt ? new Date(item.scheduledAt) : null;
-    const isActiveSession = item.itemType === 'session';
+    const elapsedMinutes = Math.floor((new Date() - requestedTime) / 60000);
+    
+    // Determine display context based on new display states
+    const getDisplayContext = () => {
+      switch (item.displayState) {
+        case 'awaiting_response':
+          return {
+            badge: 'WAITING',
+            badgeColor: '#FF9800',
+            contextLabel: 'User is waiting for your response',
+            timeLabel: `Requested ${elapsedMinutes} min ago`,
+            showActions: false // No accept/decline buttons for passive display
+          };
+        case 'accepted_chat':
+          return {
+            badge: 'ACCEPTED',
+            badgeColor: '#4CAF50',
+            contextLabel: 'Ready to start chat session',
+            timeLabel: `Accepted ${elapsedMinutes} min ago`,
+            showActions: true,
+            actionType: 'join'
+          };
+        case 'active_session':
+          return {
+            badge: 'ACTIVE',
+            badgeColor: '#2196F3',
+            contextLabel: 'Chat session in progress',
+            timeLabel: `Started ${elapsedMinutes} min ago`,
+            showActions: true,
+            actionType: 'rejoin'
+          };
+        default:
+          return {
+            badge: 'NEW',
+            badgeColor: '#666',
+            contextLabel: 'New chat request',
+            timeLabel: `Requested ${elapsedMinutes} min ago`,
+            showActions: false
+          };
+      }
+    };
+    
+    const displayContext = getDisplayContext();
     
     return (
       <View style={styles.bookingCard}>
@@ -305,33 +373,35 @@ const HomeScreen = ({ navigation }) => {
               <Text style={styles.userName}>{item.userName}</Text>
               <View style={styles.bookingType}>
                 <Ionicons
-                  name={
-                    item.type === 'chat' ? 'chatbubble' : 
-                    item.type === 'video' ? 'videocam' : 
-                    item.type === 'voice' ? 'call' : 'help-circle'
-                  }
+                  name="chatbubble"
                   size={16}
-                  color={
-                    item.type === 'chat' ? '#4CAF50' : 
-                    item.type === 'video' ? '#2196F3' : 
-                    item.type === 'voice' ? '#FF9800' : '#666'
-                  }
+                  color="#4CAF50"
                 />
                 <Text style={styles.bookingTypeText}>
-                  {item.type.charAt(0).toUpperCase() + item.type.slice(1)} Consultation
+                  Chat Consultation
                 </Text>
               </View>
               <Text style={styles.timeAgo}>
-                {isActiveSession 
-                  ? `Started ${Math.floor((new Date() - requestedTime) / 60000)} min ago`
-                  : `Requested ${Math.floor((new Date() - requestedTime) / 60000)} min ago`
-                }
+                {displayContext.timeLabel}
               </Text>
+              {/* Context label for user guidance */}
+              <View style={styles.contextContainer}>
+                <Ionicons 
+                  name={item.displayState === 'awaiting_response' ? 'hourglass-outline' : 
+                        item.displayState === 'accepted_chat' ? 'checkmark-circle-outline' : 
+                        'chatbubbles-outline'} 
+                  size={14} 
+                  color={displayContext.badgeColor} 
+                />
+                <Text style={[styles.contextLabel, { color: displayContext.badgeColor }]}>
+                  {displayContext.contextLabel}
+                </Text>
+              </View>
             </View>
           </View>
-          <View style={[styles.bookingBadge, isActiveSession && styles.activeBadge]}>
-            <Text style={[styles.badgeText, isActiveSession && styles.activeBadgeText]}>
-              {isActiveSession ? 'ACTIVE' : 'NEW'}
+          <View style={[styles.bookingBadge, { backgroundColor: displayContext.badgeColor }]}>
+            <Text style={styles.badgeText}>
+              {displayContext.badge}
             </Text>
           </View>
         </View>
@@ -362,59 +432,48 @@ const HomeScreen = ({ navigation }) => {
             </View>
           )}
           
-          {item.message && (
-            <View style={styles.messageContainer}>
-              <Ionicons name="chatbubble-outline" size={16} color="#666" />
-              <Text style={styles.messageLabel}>Message:</Text>
-              <Text style={styles.messageText} numberOfLines={2}>{item.message}</Text>
+          {/* Show elapsed time for urgency */}
+          {item.displayState === 'awaiting_response' && elapsedMinutes > 2 && (
+            <View style={styles.urgencyContainer}>
+              <Ionicons name="time-outline" size={16} color="#FF5722" />
+              <Text style={styles.urgencyText}>
+                User waiting for {elapsedMinutes} minutes
+              </Text>
             </View>
           )}
         </View>
         
-        {/* Different action buttons based on item type */}
+        {/* Refined action buttons based on display state */}
         <View style={styles.actionButtons}>
-          {isActiveSession ? (
-            // Active session - show join button (but not for voice)
-            item.type !== 'voice' ? (
+          {displayContext.showActions ? (
+            displayContext.actionType === 'join' || displayContext.actionType === 'rejoin' ? (
               <TouchableOpacity
                 style={[styles.actionButton, styles.joinButton]}
-                onPress={() => handleJoinSession(item)}
+                onPress={() => {
+                  console.log('Joining chat session:', item.id);
+                  // Navigate to EnhancedChatScreen for chat consultations
+                  navigation.navigate('HomeEnhancedChat', { 
+                    bookingId: item.id, 
+                    sessionId: item.sessionId,
+                    userId: item.userId,
+                    userName: item.userName
+                  });
+                }}
               >
-                <Ionicons name="arrow-forward-circle" size={18} color="#fff" />
-                <Text style={styles.joinButtonText}>Continue Session</Text>
+                <Ionicons name="chatbubbles" size={18} color="#fff" />
+                <Text style={styles.joinButtonText}>
+                  {displayContext.actionType === 'rejoin' ? 'Rejoin Chat' : 'Join Session'}
+                </Text>
               </TouchableOpacity>
-            ) : (
-              <View style={styles.voiceSessionInfo}>
-                <Ionicons name="call" size={18} color="#FF9800" />
-                <Text style={styles.voiceSessionText}>Voice session in progress</Text>
-              </View>
-            )
+            ) : null
           ) : (
-            // Pending booking - show accept/decline buttons
-            <>
-              <TouchableOpacity
-                style={[styles.actionButton, styles.rejectButton]}
-                onPress={() => {
-                  console.log('Declining booking:', item.id);
-                  handleRejectBooking(item);
-                }}
-                disabled={loading}
-              >
-                <Ionicons name="close-circle" size={18} color="#FF5252" />
-                <Text style={styles.rejectButtonText}>Decline</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.actionButton, styles.acceptButton]}
-                onPress={() => {
-                  console.log('Accepting booking:', item.id);
-                  handleAcceptBooking(item);
-                }}
-                disabled={loading}
-              >
-                <Ionicons name="checkmark-circle" size={18} color="#fff" />
-                <Text style={styles.acceptButtonText}>Accept</Text>
-              </TouchableOpacity>
-            </>
+            // Passive display for awaiting response - no action buttons
+            <View style={styles.passiveInfo}>
+              <Ionicons name="information-circle-outline" size={16} color="#666" />
+              <Text style={styles.passiveText}>
+                This request is waiting silently. No action needed from you right now.
+              </Text>
+            </View>
           )}
         </View>
       </View>
@@ -808,6 +867,55 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.7)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  // New styles for enhanced chat request UI
+  contextContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 5,
+    paddingVertical: 3,
+  },
+  contextLabel: {
+    fontSize: 12,
+    fontWeight: '500',
+    marginLeft: 4,
+  },
+  urgencyContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: '#FFEBEE',
+    borderRadius: 6,
+    borderLeftWidth: 3,
+    borderLeftColor: '#FF5722',
+  },
+  urgencyText: {
+    fontSize: 12,
+    color: '#FF5722',
+    fontWeight: '500',
+    marginLeft: 4,
+  },
+  passiveInfo: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    backgroundColor: '#F5F5F5',
+    borderRadius: 8,
+    borderColor: '#E0E0E0',
+    borderWidth: 1,
+  },
+  passiveText: {
+    fontSize: 12,
+    color: '#666',
+    fontStyle: 'italic',
+    marginLeft: 6,
+    textAlign: 'center',
+    flex: 1,
   },
 });
 
