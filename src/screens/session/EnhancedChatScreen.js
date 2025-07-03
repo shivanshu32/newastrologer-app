@@ -241,18 +241,22 @@ const EnhancedChatScreen = ({ route, navigation }) => {
       // Show alert with session summary and navigate back
       const sessionData = data.sessionData || {};
       const duration = sessionData.duration || 0;
+      const astrologerEarning = sessionData.astrologerEarning || 0;
       const totalAmount = sessionData.totalAmount || 0;
       
       Alert.alert(
         'Session Ended',
-        `The consultation has been ended by ${data.endedBy}.\n\nDuration: ${duration} minutes\nTotal Amount: ₹${totalAmount}`,
+        `The consultation has been ended by ${data.endedBy}.\n\nDuration: ${duration} minutes\nYour Earnings: ₹${astrologerEarning}`,
         [
           {
             text: 'OK',
             onPress: () => {
-              console.log('🔴 [ASTROLOGER-APP] Navigating to Home after session end');
-              // Navigate to Home screen after session end
-              navigation.navigate('Home');
+              console.log('🔴 [ASTROLOGER-APP] Resetting navigation to Home after session end');
+              // Reset navigation stack to prevent returning to WaitingRoom
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'Home' }],
+              });
             }
           }
         ],

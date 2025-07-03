@@ -135,10 +135,16 @@ const BookingsScreen = ({ navigation }) => {
       
       // Navigate to appropriate screen for join action
       if (action === 'join') {
+        console.log('🔵 [ASTROLOGER-APP] Navigating to consultation for booking:', booking._id, 'type:', booking.type);
         if (booking.type === 'video') {
           navigation.navigate('VideoConsultation', { bookingId: booking._id });
         } else if (booking.type === 'voice') {
           navigation.navigate('VoiceCall', { bookingId: booking._id });
+        } else if (booking.type === 'chat') {
+          navigation.navigate('BookingsChat', { bookingId: booking._id });
+        } else {
+          console.warn('🟡 [ASTROLOGER-APP] Unknown booking type:', booking.type);
+          Alert.alert('Error', 'Unknown consultation type');
         }
       }
     } catch (error) {
