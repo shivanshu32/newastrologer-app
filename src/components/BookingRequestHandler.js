@@ -299,7 +299,28 @@ const BookingRequestHandler = () => {
     
     // Listen for new booking requests
     socket.on('booking_request', (bookingData) => {
-      handleBookingRequest(bookingData);
+      console.log(' [DEBUG] BookingRequestHandler received booking_request:', bookingData);
+      
+      // Handle reliable socket message format
+      let actualBookingData = bookingData;
+      if (bookingData.meta && bookingData.payload) {
+        // This is a reliable socket message, extract the actual booking data
+        actualBookingData = bookingData.payload;
+        console.log(' [DEBUG] Extracted booking data from reliable socket message:', actualBookingData);
+        
+        // Send ACK if required
+        if (bookingData.meta.requiresAck && bookingData.meta.messageId) {
+          console.log(`✅ [BookingRequestHandler] Sending ACK for message ${bookingData.meta.messageId}`);
+          socket.emit('ack', {
+            messageId: bookingData.meta.messageId,
+            status: 'received',
+            timestamp: new Date().toISOString(),
+            clientType: 'astrologer-app'
+          });
+        }
+      }
+      
+      handleBookingRequest(actualBookingData);
     });
 
     // Listen for booking lifecycle events

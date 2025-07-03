@@ -63,10 +63,31 @@ export const listenForBookingRequests = (socket, onBookingRequest) => {
   
   console.log('Setting up listener for booking requests on socket:', socket.id);
   
-  // Create a wrapper function to log the event when received
+  // Create a wrapper function to handle reliable socket messages
   const bookingRequestHandler = (data) => {
     console.log('Received booking_request event with data:', data);
-    onBookingRequest(data);
+    
+    // Handle reliable socket message format and send ACK if required
+    let bookingData = data;
+    if (data.meta && data.payload) {
+      // This is a reliable socket message, extract the actual booking data
+      bookingData = data.payload;
+      console.log('📨 [listenForBookingRequests] Processing reliable socket message:', data.meta.messageId);
+      
+      // Send ACK if required
+      if (data.meta.requiresAck && data.meta.messageId) {
+        console.log(`✅ [listenForBookingRequests] Sending ACK for message ${data.meta.messageId}`);
+        socket.emit('ack', {
+          messageId: data.meta.messageId,
+          status: 'received',
+          timestamp: new Date().toISOString(),
+          clientType: 'astrologer-app'
+        });
+      }
+    }
+    
+    // Call the callback with the booking data
+    onBookingRequest(bookingData);
   };
   
   // Register event listener
@@ -385,6 +406,70 @@ export const listenForMessageStatusUpdates = (socket, onMessageStatusUpdate) => 
   };
 };
 
+/**
+ * Set up ACK handler for reliable socket notifications
+ * @param {Object} socket - Socket.io instance
+ */
+export const setupAckHandler = (socket) => {
+  if (!socket || !socket.connected) {
+    console.warn('⚠️ [socketService] Cannot setup ACK handler - socket not connected');
+    return;
+  }
+  
+  // Listen for messages that require acknowledgement
+  const handleReliableMessage = (event, data) => {
+    console.log(`📨 [socketService] Received reliable message on event '${event}':`, data);
+    
+    // Check if message requires acknowledgement
+    if (data.meta && data.meta.requiresAck && data.meta.messageId) {
+      console.log(`✅ [socketService] Sending ACK for message ${data.meta.messageId}`);
+      
+      // Send acknowledgement back to server
+      socket.emit('ack', {
+        messageId: data.meta.messageId,
+        status: 'received',
+        timestamp: new Date().toISOString(),
+        clientType: 'astrologer-app'
+      });
+    }
+  };
+  
+  // Set up listeners for critical events that may require ACK
+  // Note: booking_request is handled separately by listenForBookingRequests to avoid conflicts
+  const criticalEvents = [
+    'booking_status_update', 
+    'booking_accepted',
+    'booking_rejected',
+    'session_started',
+    'consultation_ended',
+    'astrologer_joined_consultation'
+  ];
+  
+  criticalEvents.forEach(event => {
+    socket.on(event, (data) => {
+      handleReliableMessage(event, data);
+    });
+  });
+  
+  console.log('🔧 [socketService] ACK handler set up for reliable notifications');
+};
+
+/**
+ * Initialize ACK handling for a socket instance
+ * @param {Object} socket - Socket.io instance
+ */
+export const initializeAckHandling = (socket) => {
+  try {
+    if (socket && socket.connected) {
+      setupAckHandler(socket);
+    } else {
+      console.warn('⚠️ [socketService] Cannot initialize ACK handling - socket not available or not connected');
+    }
+  } catch (error) {
+    console.error('❌ [socketService] Failed to initialize ACK handling:', error);
+  }
+};
+
 // Export all functions as a default object for convenience
 export default {
   respondToBookingRequest,
@@ -399,5 +484,7 @@ export default {
   sendTypingStatus,
   listenForTypingStatus,
   markMessageAsRead,
-  listenForMessageStatusUpdates
+  listenForMessageStatusUpdates,
+  setupAckHandler,
+  initializeAckHandling
 };

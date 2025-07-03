@@ -3,6 +3,7 @@ import { AppState } from 'react-native';
 import { io } from 'socket.io-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from './AuthContext';
+import { initializeAckHandling } from '../services/socketService';
 
 // Socket server URL - extract base URL from API_URL in api.js
 // Local Development (commented out for production)
@@ -83,9 +84,13 @@ export const SocketProvider = ({ children }) => {
       
       // Set up event listeners
       newSocket.on('connect', () => {
+        console.log('SocketContext: Socket connected, initializing ACK handling');
         setIsConnected(true);
         setIsConnecting(false);
         reconnectAttempts.current = 0;
+        
+        // Initialize ACK handling for reliable socket notifications
+        initializeAckHandling(newSocket);
         
         // Start ping interval
         startPingInterval(newSocket);

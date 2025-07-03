@@ -124,19 +124,37 @@ class ChatConnectionManager {
       if (message.roomId === expectedRoomId || message.roomId === this.currentBookingId) {
         console.log('🔴 [ASTROLOGER-APP] Message accepted, normalizing fields');
         
+        // Extract message content with robust fallback logic
+        let messageContent = '';
+        if (message.content && typeof message.content === 'string' && message.content.trim()) {
+          messageContent = message.content.trim();
+        } else if (message.text && typeof message.text === 'string' && message.text.trim()) {
+          messageContent = message.text.trim();
+        } else if (message.message && typeof message.message === 'string' && message.message.trim()) {
+          messageContent = message.message.trim();
+        } else {
+          console.warn('🔴 [ASTROLOGER-APP] No valid message content found in received message:', message);
+          messageContent = '[Message content unavailable]';
+        }
+        
         // Normalize message fields to ensure compatibility
         const normalizedMessage = {
           ...message,
-          id: message.id || message.messageId || `msg_${Date.now()}`,
-          text: message.content || message.text || message.message,
-          content: message.content || message.text || message.message,
-          senderId: message.senderId || message.sender,
-          senderName: message.senderName || 'User',
+          id: message.id || message.messageId || `msg_${Date.now()}_${Math.random()}`,
+          // Ensure all three content fields are populated with the same validated content
+          text: messageContent,
+          content: messageContent,
+          message: messageContent,
+          senderId: message.senderId || message.sender || 'unknown',
+          sender: message.sender || message.senderRole || 'unknown',
+          senderRole: message.senderRole || message.sender || 'unknown',
+          senderName: message.senderName || (message.senderRole === 'user' ? 'User' : 'Astrologer'),
           timestamp: message.timestamp || new Date().toISOString(),
           status: 'received'
         };
         
         console.log('🔴 [ASTROLOGER-APP] Normalized message:', normalizedMessage);
+        console.log('🔴 [ASTROLOGER-APP] Final message content:', messageContent);
         this.notifyMessage(normalizedMessage);
       } else {
         console.log('🔴 [ASTROLOGER-APP] Message rejected - roomId mismatch');

@@ -291,7 +291,7 @@ const BookingsScreen = ({ navigation }) => {
             />
             <View style={styles.userDetails}>
               <Text style={styles.userName}>
-                {booking.user?.displayName || booking.user?.name || 'User'}
+                {booking.userInfo?.name || booking.user?.displayName || booking.user?.name || 'User'}
               </Text>
               <View style={styles.bookingType}>
                 <Ionicons name={typeIcon} size={14} color="#666" />

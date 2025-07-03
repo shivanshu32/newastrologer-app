@@ -74,11 +74,12 @@ const HomeScreen = ({ navigation }) => {
             // Use optional chaining and nullish coalescing for safety
             id: newBooking._id || newBooking.id || `temp-${Date.now()}`,
             userId: (newBooking.user && newBooking.user._id) || newBooking.userId || 'unknown',
-            userName: (newBooking.user && newBooking.user.name) || newBooking.userName || 'User',
+            userName: newBooking.userInfo?.name || (newBooking.user && newBooking.user.name) || newBooking.userName || 'User',
             userImage: (newBooking.user && newBooking.user.profileImage) || 'https://via.placeholder.com/100',
             type: newBooking.type || 'chat',
             status: newBooking.status || 'pending',
-            requestedTime: newBooking.createdAt || new Date().toISOString()
+            requestedTime: newBooking.createdAt || new Date().toISOString(),
+            userInfo: newBooking.userInfo // Store the complete userInfo for potential future use
           };
           
           // Add the sanitized booking to the pending bookings list
@@ -565,7 +566,7 @@ const HomeScreen = ({ navigation }) => {
           <ActivityIndicator size="large" color="#8A2BE2" />
         </View>
       )}
-      <Button title='Try!' onPress={ () => { Sentry.captureException(new Error('First error')) }}/>
+      {/* <Button title='Try!' onPress={ () => { Sentry.captureException(new Error('First error')) }}/> */}
     </View>
   );
 };

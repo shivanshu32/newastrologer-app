@@ -20,7 +20,16 @@ import ChatConnectionManager from '../../utils/ChatConnectionManager';
 const { width, height } = Dimensions.get('window');
 
 const EnhancedChatScreen = ({ route, navigation }) => {
-  const { bookingId, astrologerId, sessionId } = route.params;
+  console.log('🔴 [ASTROLOGER-APP] ===== ENHANCED CHAT SCREEN COMPONENT MOUNTING =====');
+  console.log('🔴 [ASTROLOGER-APP] Route object:', route);
+  console.log('🔴 [ASTROLOGER-APP] Route params:', route?.params);
+  
+  const { bookingId, astrologerId, sessionId } = route.params || {};
+  
+  console.log('🔴 [ASTROLOGER-APP] Extracted params:');
+  console.log('🔴 [ASTROLOGER-APP] - bookingId:', bookingId);
+  console.log('🔴 [ASTROLOGER-APP] - astrologerId:', astrologerId);
+  console.log('🔴 [ASTROLOGER-APP] - sessionId:', sessionId);
   
   // State management
   const [messages, setMessages] = useState([]);
@@ -34,6 +43,8 @@ const EnhancedChatScreen = ({ route, navigation }) => {
   const [sessionEnded, setSessionEnded] = useState(false);
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [isKeyboardVisible, setIsKeyboardVisible] = useState(false);
+  const [userInfo, setUserInfo] = useState(null);
+  const [bookingDetails, setBookingDetails] = useState(null);
   
   // Refs
   const chatManagerRef = useRef(null);
@@ -42,38 +53,133 @@ const EnhancedChatScreen = ({ route, navigation }) => {
   const messageIdCounter = useRef(0);
   const timerRef = useRef(null);
 
+  // Function to fetch booking details with user information
+  const fetchBookingDetails = useCallback(async () => {
+    if (!bookingId) {
+      console.log('🔴 [ASTROLOGER-APP] No bookingId provided, skipping booking details fetch');
+      return;
+    }
+
+    try {
+      console.log('🔴 [ASTROLOGER-APP] Fetching booking details for bookingId:', bookingId);
+      
+      // Get astrologer token for API authentication
+      const astrologerData = await AsyncStorage.getItem('astrologerData');
+      const parsedData = astrologerData ? JSON.parse(astrologerData) : null;
+      const token = parsedData?.token;
+      
+      if (!token) {
+        console.error('🔴 [ASTROLOGER-APP] No astrologer token found');
+        return;
+      }
+
+      const response = await fetch(`http://192.168.1.8:5000/api/bookings/${bookingId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (response.ok) {
+        const booking = await response.json();
+        console.log('🔴 [ASTROLOGER-APP] Booking details fetched:', booking);
+        
+        setBookingDetails(booking);
+        
+        // Extract user information from booking
+        if (booking.userInfo) {
+          console.log('🔴 [ASTROLOGER-APP] User info found:', booking.userInfo);
+          setUserInfo(booking.userInfo);
+        } else {
+          console.log('🔴 [ASTROLOGER-APP] No user info found in booking');
+        }
+      } else {
+        console.error('🔴 [ASTROLOGER-APP] Failed to fetch booking details:', response.status);
+      }
+    } catch (error) {
+      console.error('🔴 [ASTROLOGER-APP] Error fetching booking details:', error);
+    }
+  }, [bookingId]);
+
+  // Component lifecycle logging
+  useEffect(() => {
+    console.log('🔴 [ASTROLOGER-APP] ===== ENHANCED CHAT SCREEN MOUNTED =====');
+    console.log('🔴 [ASTROLOGER-APP] Component mounted with params:', { bookingId, astrologerId, sessionId });
+    
+    // Fetch booking details on component mount
+    fetchBookingDetails();
+    
+    return () => {
+      console.log('🔴 [ASTROLOGER-APP] ===== ENHANCED CHAT SCREEN UNMOUNTING =====');
+    };
+  }, [fetchBookingDetails]);
+
   // Initialize chat connection manager
   useEffect(() => {
     const initializeChat = async () => {
       try {
+        console.log('🔴 [ASTROLOGER-APP] ===== INITIALIZING CHAT =====');
+        console.log('🔴 [ASTROLOGER-APP] BookingId:', bookingId);
+        console.log('🔴 [ASTROLOGER-APP] AstrologerId:', astrologerId);
+        console.log('🔴 [ASTROLOGER-APP] SessionId:', sessionId);
+        
         const astrologerData = await AsyncStorage.getItem('astrologerData');
         const parsedData = astrologerData ? JSON.parse(astrologerData) : null;
         const currentAstrologerId = parsedData?.id || astrologerId;
-
-        chatManagerRef.current = new ChatConnectionManager();
         
-        // Set up event listeners
-        const unsubscribeConnection = chatManagerRef.current.onConnectionStatus(handleConnectionStatus);
-        const unsubscribeMessage = chatManagerRef.current.onMessage(handleNewMessage);
-        const unsubscribeTyping = chatManagerRef.current.onTyping(handleTypingStatus);
-        const unsubscribeStatus = chatManagerRef.current.onStatusUpdate(handleStatusUpdate);
+        console.log('🔴 [ASTROLOGER-APP] Current astrologer ID:', currentAstrologerId);
+        console.log('🔴 [ASTROLOGER-APP] Parsed astrologer data:', parsedData);
+
+        console.log('🔴 [ASTROLOGER-APP] Creating ChatConnectionManager...');
+        chatManagerRef.current = new ChatConnectionManager();
+        console.log('🔴 [ASTROLOGER-APP] ChatConnectionManager created successfully');
+        
+        // Set up event listeners with logging
+        console.log('🔴 [ASTROLOGER-APP] Setting up event listeners...');
+        const unsubscribeConnection = chatManagerRef.current.onConnectionStatus((status) => {
+          console.log('🔴 [ASTROLOGER-APP] Connection status callback triggered:', status);
+          handleConnectionStatus(status);
+        });
+        const unsubscribeMessage = chatManagerRef.current.onMessage((message) => {
+          console.log('🔴 [ASTROLOGER-APP] Message callback triggered:', message);
+          handleNewMessage(message);
+        });
+        const unsubscribeTyping = chatManagerRef.current.onTyping((isTyping, data) => {
+          console.log('🔴 [ASTROLOGER-APP] Typing callback triggered:', { isTyping, data });
+          handleTypingStatus(isTyping, data);
+        });
+        const unsubscribeStatus = chatManagerRef.current.onStatusUpdate((data) => {
+          console.log('🔴 [ASTROLOGER-APP] Status update callback triggered:', data);
+          handleStatusUpdate(data);
+        });
+        console.log('🔴 [ASTROLOGER-APP] Event listeners set up successfully');
 
         // Initialize connection
+        console.log('🔴 [ASTROLOGER-APP] Initializing ChatConnectionManager...');
         await chatManagerRef.current.initialize(bookingId, currentAstrologerId);
+        console.log('🔴 [ASTROLOGER-APP] ChatConnectionManager initialized successfully');
 
         // Start session timer if sessionId is provided
         if (sessionId) {
+          console.log('🔴 [ASTROLOGER-APP] Starting session timer for sessionId:', sessionId);
           chatManagerRef.current.startSessionTimer(sessionId);
+        } else {
+          console.log('🔴 [ASTROLOGER-APP] No sessionId provided, skipping timer start');
         }
 
+        console.log('🔴 [ASTROLOGER-APP] Chat initialization completed successfully');
+
         return () => {
+          console.log('🔴 [ASTROLOGER-APP] Cleaning up event listeners');
           unsubscribeConnection();
           unsubscribeMessage();
           unsubscribeTyping();
           unsubscribeStatus();
         };
       } catch (error) {
-        console.error('Failed to initialize chat:', error);
+        console.error('🔴 [ASTROLOGER-APP] Failed to initialize chat:', error);
+        console.error('🔴 [ASTROLOGER-APP] Error stack:', error.stack);
         Alert.alert('Error', 'Failed to initialize chat connection');
       }
     };
@@ -123,29 +229,84 @@ const EnhancedChatScreen = ({ route, navigation }) => {
 
   // Handle connection status updates
   const handleConnectionStatus = useCallback((status) => {
+    console.log('🔴 [ASTROLOGER-APP] ===== CONNECTION STATUS UPDATE =====');
+    console.log('🔴 [ASTROLOGER-APP] Status:', status.status);
+    console.log('🔴 [ASTROLOGER-APP] Message:', status.message);
+    console.log('🔴 [ASTROLOGER-APP] Full status object:', status);
+    
     setConnectionStatus(status.status);
     setConnectionMessage(status.message || '');
     
     if (status.status === 'connected') {
-      console.log('Chat connected successfully');
+      console.log('🔴 [ASTROLOGER-APP] ✅ Chat connected successfully');
     } else if (status.status === 'error' || status.status === 'failed') {
-      console.error('Chat connection error:', status.message);
+      console.error('🔴 [ASTROLOGER-APP] ❌ Chat connection error:', status.message);
+    } else if (status.status === 'connecting') {
+      console.log('🔴 [ASTROLOGER-APP] 🔄 Chat connecting...');
+    } else if (status.status === 'disconnected') {
+      console.log('🔴 [ASTROLOGER-APP] 🔌 Chat disconnected');
     }
   }, []);
 
   // Handle new messages
   const handleNewMessage = useCallback((message) => {
-    console.log('🔴 [ASTROLOGER-APP] Message received:', message.id);
+    console.log('🔴 [ASTROLOGER-APP] ===== NEW MESSAGE RECEIVED =====');
+    console.log('🔴 [ASTROLOGER-APP] Message ID:', message.id);
+    console.log('🔴 [ASTROLOGER-APP] Message content field:', message.content);
+    console.log('🔴 [ASTROLOGER-APP] Message text field:', message.text);
+    console.log('🔴 [ASTROLOGER-APP] Message message field:', message.message);
+    console.log('🔴 [ASTROLOGER-APP] Message sender:', message.sender);
+    console.log('🔴 [ASTROLOGER-APP] Full message object:', JSON.stringify(message, null, 2));
+    
+    // Extract content with detailed logging
+    let extractedContent = '';
+    if (message.content && typeof message.content === 'string' && message.content.trim()) {
+      extractedContent = message.content.trim();
+      console.log('🔴 [ASTROLOGER-APP] Using content field:', extractedContent);
+    } else if (message.text && typeof message.text === 'string' && message.text.trim()) {
+      extractedContent = message.text.trim();
+      console.log('🔴 [ASTROLOGER-APP] Using text field:', extractedContent);
+    } else if (message.message && typeof message.message === 'string' && message.message.trim()) {
+      extractedContent = message.message.trim();
+      console.log('🔴 [ASTROLOGER-APP] Using message field:', extractedContent);
+    } else {
+      extractedContent = '[Message content unavailable]';
+      console.log('🔴 [ASTROLOGER-APP] No valid content found, using fallback');
+    }
+    
+    // Normalize message to ensure consistent structure
+    const normalizedMessage = {
+      ...message,
+      // Use the extracted content for all fields
+      content: extractedContent,
+      text: extractedContent,
+      message: extractedContent,
+      // Ensure we have required fields
+      id: message.id || `msg_${Date.now()}_${Math.random()}`,
+      timestamp: message.timestamp || new Date().toISOString(),
+      sender: message.sender || message.senderRole || 'unknown',
+      senderId: message.senderId || message.sender || 'unknown'
+    };
+    
+    console.log('🔴 [ASTROLOGER-APP] Final normalized message content:', normalizedMessage.content);
+    console.log('🔴 [ASTROLOGER-APP] Final normalized message text:', normalizedMessage.text);
+    console.log('🔴 [ASTROLOGER-APP] Final normalized message message:', normalizedMessage.message);
     
     setMessages(prevMessages => {
       // Avoid duplicate messages
-      const exists = prevMessages.some(msg => msg.id === message.id);
+      const exists = prevMessages.some(msg => msg.id === normalizedMessage.id);
       if (exists) {
+        console.log('🔴 [ASTROLOGER-APP] Duplicate message ignored:', normalizedMessage.id);
         return prevMessages;
       }
       
+      console.log('🔴 [ASTROLOGER-APP] Adding message to state with content:', normalizedMessage.content);
+      
       // Add message without sorting to prevent blocking
-      const newMessages = [...prevMessages, message];
+      const newMessages = [...prevMessages, normalizedMessage];
+      
+      console.log('🔴 [ASTROLOGER-APP] Total messages in state:', newMessages.length);
+      console.log('🔴 [ASTROLOGER-APP] Last message content:', newMessages[newMessages.length - 1]?.content);
       
       // Auto-scroll to bottom immediately for instant message display
       setTimeout(() => {
@@ -156,9 +317,9 @@ const EnhancedChatScreen = ({ route, navigation }) => {
     });
 
     // Mark message as read if it's from user (non-blocking)
-    if (message.senderId !== astrologerId && chatManagerRef.current) {
+    if (normalizedMessage.senderId !== astrologerId && chatManagerRef.current) {
       setTimeout(() => {
-        chatManagerRef.current.markMessageAsRead(message.id);
+        chatManagerRef.current.markMessageAsRead(normalizedMessage.id);
       }, 0);
     }
   }, [astrologerId]);
@@ -215,7 +376,10 @@ const EnhancedChatScreen = ({ route, navigation }) => {
         [
           {
             text: 'OK',
-            onPress: () => navigation.goBack()
+            onPress: () => {
+              console.log('🔴 [ASTROLOGER-APP] Navigating to Home after session end');
+              navigation.navigate('Home');
+            }
           }
         ]
       );
@@ -357,7 +521,8 @@ const EnhancedChatScreen = ({ route, navigation }) => {
             if (chatManagerRef.current && sessionId) {
               chatManagerRef.current.endSession(sessionId);
             }
-            navigation.goBack();
+            // Navigate to Home screen instead of going back to waiting screen
+            navigation.navigate('Home');
           }
         }
       ]
@@ -411,34 +576,63 @@ const EnhancedChatScreen = ({ route, navigation }) => {
 
   // Render message item
   const renderMessage = ({ item }) => {
-
-    console.log("in render message")
-
-    console.log(item)
-
-    console.log("above is item")
-
+    console.log('🔴 [ASTROLOGER-APP] ===== RENDERING MESSAGE =====');
+    console.log('🔴 [ASTROLOGER-APP] Message ID:', item.id);
+    console.log('🔴 [ASTROLOGER-APP] Item content field:', item.content);
+    console.log('🔴 [ASTROLOGER-APP] Item text field:', item.text);
+    console.log('🔴 [ASTROLOGER-APP] Item message field:', item.message);
+    console.log('🔴 [ASTROLOGER-APP] Item sender:', item.sender);
+    
+    // Defensive check for item existence
+    if (!item) {
+      console.error('🔴 [ASTROLOGER-APP] Null/undefined message item');
+      return null;
+    }
 
     // Check if this message is from the astrologer (current user)
     const isOwnMessage = item.sender === 'astrologer' || item.senderRole === 'astrologer' || item.senderId === astrologerId;
-    const messageText = item.content || item.text || item.message || 'Message content unavailable';
-
-    console.log("message text is")
-    console.log(messageText)
     
-    console.log('🔴 [ASTROLOGER-APP] Rendering message:', {
-      id: item.id,
-      sender: item.sender,
-      senderRole: item.senderRole,
-      senderId: item.senderId,
-      astrologerId: astrologerId,
-      isOwnMessage: isOwnMessage,
-      content: item.content,
-      text: item.text,
-      message: item.message,
-      messageText: messageText,
-      timestamp: item.timestamp
-    });
+    // Enhanced message text extraction with multiple fallbacks and validation
+    let messageText = '';
+    
+    // Try different field combinations with detailed logging
+    if (item.content && typeof item.content === 'string' && item.content.trim()) {
+      messageText = item.content.trim();
+      console.log('🔴 [ASTROLOGER-APP] Using content field for display:', messageText);
+    } else if (item.text && typeof item.text === 'string' && item.text.trim()) {
+      messageText = item.text.trim();
+      console.log('🔴 [ASTROLOGER-APP] Using text field for display:', messageText);
+    } else if (item.message && typeof item.message === 'string' && item.message.trim()) {
+      messageText = item.message.trim();
+      console.log('🔴 [ASTROLOGER-APP] Using message field for display:', messageText);
+    } else {
+      // Final fallback - check if any field exists but might be empty
+      messageText = 'Message content unavailable';
+      console.error('🔴 [ASTROLOGER-APP] NO VALID MESSAGE TEXT FOUND:', {
+        id: item.id,
+        content: item.content,
+        contentType: typeof item.content,
+        text: item.text,
+        textType: typeof item.text,
+        message: item.message,
+        messageType: typeof item.message,
+        allFields: Object.keys(item),
+        fullItem: JSON.stringify(item, null, 2)
+      });
+    }
+    
+    console.log('🔴 [ASTROLOGER-APP] FINAL MESSAGE TEXT FOR DISPLAY:', messageText);
+    console.log('🔴 [ASTROLOGER-APP] Message text length:', messageText.length);
+    
+    // Validate timestamp
+    const timestamp = item.timestamp || new Date().toISOString();
+    let formattedTime = '';
+    try {
+      formattedTime = new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    } catch (error) {
+      console.error('🔴 [ASTROLOGER-APP] Invalid timestamp:', timestamp);
+      formattedTime = '--:--';
+    }
     
     return (
       <View style={[styles.messageContainer, isOwnMessage ? styles.ownMessage : styles.otherMessage]}>
@@ -447,7 +641,7 @@ const EnhancedChatScreen = ({ route, navigation }) => {
             {messageText}
           </Text>
           <Text style={[styles.messageTime, isOwnMessage ? styles.ownMessageTime : styles.otherMessageTime]}>
-            {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            {formattedTime}
           </Text>
         </View>
       </View>
@@ -502,6 +696,35 @@ const EnhancedChatScreen = ({ route, navigation }) => {
             {getConnectionStatusText()}
             {connectionMessage ? ` - ${connectionMessage}` : ''}
           </Text>
+        </View>
+      )}
+
+      {/* User Information Panel */}
+      {userInfo && (
+        <View style={styles.userInfoPanel}>
+          <View style={styles.userInfoHeader}>
+            <Text style={styles.userInfoTitle}>User Details</Text>
+          </View>
+          <View style={styles.userInfoContent}>
+            <View style={styles.userInfoRow}>
+              <Text style={styles.userInfoLabel}>Name:</Text>
+              <Text style={styles.userInfoValue}>{userInfo.name}</Text>
+            </View>
+            <View style={styles.userInfoRow}>
+              <Text style={styles.userInfoLabel}>Date of Birth:</Text>
+              <Text style={styles.userInfoValue}>
+                {userInfo.dateOfBirth ? new Date(userInfo.dateOfBirth).toLocaleDateString('en-IN', {
+                  day: '2-digit',
+                  month: '2-digit', 
+                  year: 'numeric'
+                }) : 'Not provided'}
+              </Text>
+            </View>
+            <View style={styles.userInfoRow}>
+              <Text style={styles.userInfoLabel}>Place of Birth:</Text>
+              <Text style={styles.userInfoValue}>{userInfo.placeOfBirth}</Text>
+            </View>
+          </View>
         </View>
       )}
 
@@ -738,6 +961,54 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  userInfoPanel: {
+    backgroundColor: '#FFFFFF',
+    marginHorizontal: 10,
+    marginVertical: 8,
+    borderRadius: 12,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+  },
+  userInfoHeader: {
+    backgroundColor: '#6B46C1',
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+  },
+  userInfoTitle: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+    textAlign: 'center',
+  },
+  userInfoContent: {
+    paddingVertical: 12,
+    paddingHorizontal: 15,
+  },
+  userInfoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F0F0F0',
+  },
+  userInfoLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333333',
+    flex: 1,
+  },
+  userInfoValue: {
+    fontSize: 14,
+    color: '#666666',
+    flex: 2,
+    textAlign: 'right',
   },
 });
 
