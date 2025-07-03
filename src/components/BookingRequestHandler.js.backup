@@ -23,6 +23,25 @@ const BookingRequestHandler = () => {
   // Get socket from context and navigation
   const { socket, isConnected } = useSocket();
   const navigation = useNavigation();
+  
+  // Component lifecycle debugging
+  useEffect(() => {
+    console.log('🚀 [BookingRequestHandler] Component mounted');
+    console.log('🚀 [BookingRequestHandler] Initial socket:', socket?.id);
+    console.log('🚀 [BookingRequestHandler] Initial connected:', isConnected);
+    
+    return () => {
+      console.log('💀 [BookingRequestHandler] Component unmounting');
+    };
+  }, []);
+  
+  // Socket state change debugging
+  useEffect(() => {
+    console.log('🔄 [BookingRequestHandler] Socket state changed:');
+    console.log('🔄 [BookingRequestHandler] Socket ID:', socket?.id);
+    console.log('🔄 [BookingRequestHandler] Connected:', isConnected);
+    console.log('🔄 [BookingRequestHandler] Socket connected:', socket?.connected);
+  }, [socket, isConnected]);
 
   // Handle incoming booking request
   const handleBookingRequest = useCallback((request) => {
@@ -295,32 +314,177 @@ const BookingRequestHandler = () => {
       return;
     }
 
-    console.log('Setting up booking request and lifecycle listeners');
+    // Add delay to ensure socket is fully ready after reconnection
+    const setupListeners = () => {
+      console.log('🔧 [BookingRequestHandler] Setting up booking request and lifecycle listeners');
+      console.log('🔧 [BookingRequestHandler] Socket ID:', socket.id);
+      console.log('🔧 [BookingRequestHandler] Socket connected:', socket.connected);
+      console.log('🔧 [BookingRequestHandler] Socket authenticated:', socket.auth);
+      console.log('🔧 [BookingRequestHandler] Socket transport:', socket.io?.engine?.transport?.name);
+      console.log('🔧 [BookingRequestHandler] Current timestamp:', new Date().toISOString());
+      
+      // Verify socket is actually ready
+      }
+    }
+  );
+  
+  console.log(' [DEBUG] booking_response event emitted successfully');
+  
+} catch (error) {
+  console.error(' [ERROR] Exception in handleAcceptBooking:', error);
+  setIsAccepting(false);
+  Alert.alert('Error', 'Failed to accept booking. Please try again.');
+}
+
+// Handle reject booking request using socket event
+const handleRejectBooking = useCallback(async () => {
+  console.log(' [DEBUG] handleRejectBooking called - START');
+  console.log(' [DEBUG] Current booking request:', bookingRequest);
+  console.log(' [DEBUG] Socket available:', !!socket);
+  console.log(' [DEBUG] Socket connected:', socket?.connected);
+  
+  // Store booking request data locally to prevent state clearing issues
+  const currentBookingRequest = bookingRequest;
+  console.log(' [DEBUG] Stored booking request locally:', currentBookingRequest);
+  
+  if (!socket) {
+    console.error(' [ERROR] Socket is not available');
+    Alert.alert('Error', 'Connection not available. Please try again.');
+    return;
+  }
+
+  if (!socket.connected) {
+    console.error(' [ERROR] Socket is not connected');
+    Alert.alert('Error', 'Not connected to server. Please try again.');
+    return;
+  }
+
+  if (!currentBookingRequest?._id) {
+    console.error(' [ERROR] No booking request ID available');
+    console.error(' [ERROR] currentBookingRequest:', currentBookingRequest);
+    Alert.alert('Error', 'Invalid booking request.');
+    return;
+  }
+
+  try {
+    setIsRejecting(true);
+    console.log(' [DEBUG] About to emit booking_response event');
+    console.log(' [DEBUG] Payload:', { bookingId: currentBookingRequest._id, status: 'rejected' });
+    
+    socket.emit('booking_response', 
+      { bookingId: currentBookingRequest._id, status: 'rejected' },
+      (response) => {
+        console.log(' [DEBUG] Socket callback received:', response);
+        setIsRejecting(false);
+        
+        if (response?.success) {
+          console.log(' [SUCCESS] Booking rejected successfully');
+          setIsPopupVisible(false);
+          setBookingRequest(null);
+          Alert.alert('Success', 'Booking rejected successfully');
+        } else {
+          console.error(' [ERROR] Backend rejected rejection:', response);
+          Alert.alert('Error', response?.message || 'Failed to reject booking');
+        }
+      }
+    );
+    
+    console.log(' [DEBUG] booking_response event emitted successfully');
+    
+  } catch (error) {
+    console.error(' [ERROR] Exception in handleRejectBooking:', error);
+    setIsRejecting(false);
+    Alert.alert('Error', 'Failed to reject booking. Please try again.');
+  }
+}, [socket, bookingRequest]);
+
+// Close popup without responding (should be used carefully)
+const handleClose = useCallback(() => {
+  console.log('Booking request popup closed without response');
+  setIsPopupVisible(false);
+  setError(null);
+  setBookingRequest(null);
+  
+  // Note: This should be used carefully as it doesn't respond to the request
+  // Consider auto-rejecting if popup is closed without a response
+}, []);
+
+// Set up socket listener for booking requests and lifecycle events
+useEffect(() => {
+  if (!socket || !isConnected) {
+    console.log('Socket not connected, skipping booking request listener setup');
+    return;
+  }
+
+  // Add delay to ensure socket is fully ready after reconnection
+  const setupListeners = () => {
+    console.log('🔧 [BookingRequestHandler] Setting up booking request and lifecycle listeners');
+    console.log('🔧 [BookingRequestHandler] Socket ID:', socket.id);
+    console.log('🔧 [BookingRequestHandler] Socket connected:', socket.connected);
+    console.log('🔧 [BookingRequestHandler] Socket authenticated:', socket.auth);
+    console.log('🔧 [BookingRequestHandler] Socket transport:', socket.io?.engine?.transport?.name);
+    console.log('🔧 [BookingRequestHandler] Current timestamp:', new Date().toISOString());
+    
+    // Verify socket is actually ready
+    if (!socket.connected) {
+      console.warn('⚠️ [BookingRequestHandler] Socket not connected, delaying listener setup');
+      setTimeout(setupListeners, 1000);
+      return;
+    }
+    
+    console.log('👂 [BookingRequestHandler] Attaching socket event listeners...');
     
     // Listen for new booking requests
     socket.on('booking_request', (bookingData) => {
-      console.log(' [DEBUG] BookingRequestHandler received booking_request:', bookingData);
+      console.log('🔥🔥🔥 [BookingRequestHandler] BOOKING REQUEST RECEIVED! 🔥🔥🔥');
+      console.log('🔥 [BookingRequestHandler] Socket ID:', socket.id);
+      console.log('🔥 [BookingRequestHandler] Socket connected:', socket.connected);
+      console.log('🔥 [BookingRequestHandler] Timestamp:', new Date().toISOString());
+      console.log('🔥 [BookingRequestHandler] Raw booking data:', JSON.stringify(bookingData, null, 2));
       
       // Handle reliable socket message format
       let actualBookingData = bookingData;
       if (bookingData.meta && bookingData.payload) {
         // This is a reliable socket message, extract the actual booking data
         actualBookingData = bookingData.payload;
-        console.log(' [DEBUG] Extracted booking data from reliable socket message:', actualBookingData);
+        console.log('🔥 [BookingRequestHandler] Extracted booking data from reliable socket message:', JSON.stringify(actualBookingData, null, 2));
         
         // Send ACK if required
         if (bookingData.meta.requiresAck && bookingData.meta.messageId) {
           console.log(`✅ [BookingRequestHandler] Sending ACK for message ${bookingData.meta.messageId}`);
-          socket.emit('ack', {
+          console.log('✅ [BookingRequestHandler] ACK payload:', {
             messageId: bookingData.meta.messageId,
             status: 'received',
             timestamp: new Date().toISOString(),
             clientType: 'astrologer-app'
           });
+          
+          try {
+            socket.emit('ack', {
+              messageId: bookingData.meta.messageId,
+              status: 'received',
+              timestamp: new Date().toISOString(),
+              clientType: 'astrologer-app'
+            });
+            console.log('✅ [BookingRequestHandler] ACK sent successfully');
+          } catch (error) {
+            console.error('❌ [BookingRequestHandler] Failed to send ACK:', error);
+          }
+        } else {
+          console.warn('⚠️ [BookingRequestHandler] No ACK required or missing messageId');
+          console.warn('⚠️ [BookingRequestHandler] requiresAck:', bookingData.meta?.requiresAck);
+          console.warn('⚠️ [BookingRequestHandler] messageId:', bookingData.meta?.messageId);
         }
+      } else {
+        console.log('🔥 [BookingRequestHandler] Direct booking data (no reliable socket wrapper)');
       }
       
-      handleBookingRequest(actualBookingData);
+      try {
+        handleBookingRequest(actualBookingData);
+        console.log('✅ [BookingRequestHandler] Booking request handled successfully');
+      } catch (error) {
+        console.error('❌ [BookingRequestHandler] Failed to handle booking request:', error);
+      }
     });
 
     // Listen for booking lifecycle events
@@ -361,17 +525,17 @@ const BookingRequestHandler = () => {
               bookingId: data.bookingId,
               sessionId: data.sessionId,
               roomId: data.roomId,
-              consultationType: data.consultationType || 'video',
-              bookingDetails: data.bookingDetails || data
+              consultationType: data.consultationType,
+              bookingDetails: data.bookingDetails
             }
           });
         }
       } catch (error) {
-        console.error(' [ERROR] Failed to navigate to WaitingRoom:', error);
+        console.error(' [ERROR] Failed to handle booking status update:', error);
       }
     });
 
-    // Listen for user joining consultation - navigate to session screen
+    // Listen for user joined consultation event
     socket.on('user_joined_consultation', (data) => {
       console.log('🔥🔥🔥 [ASTROLOGER-APP] user_joined_consultation event received! 🔥🔥🔥');
       console.log(' [DEBUG] Raw event data:', JSON.stringify(data, null, 2));
@@ -379,12 +543,12 @@ const BookingRequestHandler = () => {
       console.log(' [DEBUG] Socket connected:', socket?.connected);
       console.log(' [DEBUG] Event timestamp:', new Date().toISOString());
       console.log(' [DEBUG] Consultation type:', data.consultationType);
-      console.log(' [DEBUG] Booking details:', data.bookingDetails);
+      console.log(' [DEBUG] Booking ID:', data.bookingId);
       
       try {
-        // Navigate to appropriate session screen based on consultation type
+        // Navigate to appropriate consultation screen based on type
         if (data.consultationType === 'video') {
-          console.log(' [DEBUG] Navigating to VideoConsultation screen');
+          console.log(' [DEBUG] Navigating to VideoCall screen');
           navigation.navigate('BookingsVideoCall', {
             bookingId: data.bookingId,
             sessionId: data.sessionId,
@@ -428,18 +592,60 @@ const BookingRequestHandler = () => {
         Alert.alert('Booking Cancelled', 'The booking has been cancelled.');
       }
     });
+    
+    console.log('✅ [BookingRequestHandler] All socket event listeners attached successfully');
+  };
+    // Monitor all outgoing events
+    socket.emit = function(event, ...args) {
+      console.log('📤 [BookingRequestHandler] Emitting event:', event);
+      if (event === 'ack') {
+        console.log('📤 [BookingRequestHandler] ACK details:', args[0]);
+      }
+      return originalEmit.apply(this, [event, ...args]);
+    };
+    
+    // Global event monitor - catch ALL incoming events
+    const originalOnevent = socket.onevent;
+    socket.onevent = function(packet) {
+      const [event, ...args] = packet.data || [];
+      console.log('📥 [BookingRequestHandler] GLOBAL EVENT MONITOR - Received:', event);
+      
+      if (event === 'booking_request') {
+        console.log('🚨 [BookingRequestHandler] BOOKING REQUEST DETECTED BY GLOBAL MONITOR!');
+        console.log('🚨 [BookingRequestHandler] Event data:', JSON.stringify(args[0], null, 2));
+      }
+      
+      return originalOnevent.call(this, packet);
+    };
+    
+    // Setup listeners immediately if socket is ready, otherwise delay
+    if (socket.connected) {
+      setupListeners();
+    } else {
+      console.log('⏳ [BookingRequestHandler] Socket not ready, waiting for connection...');
+      setTimeout(setupListeners, 1000);
+    }
 
     // Clean up listeners on unmount
     return () => {
-      console.log('Cleaning up booking request and lifecycle listeners');
-      socket.off('booking_request');
-      socket.off('booking_expired');
-      socket.off('booking_response_confirmed');
-      socket.off('booking_status_update');
-      socket.off('user_joined_consultation');
-      socket.off('booking_cancelled');
+      console.log('🧹 [BookingRequestHandler] Cleaning up booking request and lifecycle listeners');
+      console.log('🧹 [BookingRequestHandler] Socket ID during cleanup:', socket?.id);
+      if (socket) {
+        // Restore original socket methods
+        socket.emit = originalEmit;
+        socket.onevent = originalOnevent;
+        
+        socket.off('booking_request');
+        socket.off('booking_expired');
+        socket.off('booking_response_confirmed');
+        socket.off('booking_status_update');
+        socket.off('user_joined_consultation');
+        socket.off('booking_cancelled');
+        
+        console.log('🧹 [BookingRequestHandler] All listeners removed');
+      }
     };
-  }, [socket, isConnected]); // Removed unstable dependencies that cause listener churn
+  }, [socket, isConnected]); // Removed unstable dependencies
 
   
   return (

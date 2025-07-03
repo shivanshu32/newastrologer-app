@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Sentry from '@sentry/react-native';
 import { useAuth } from '../../context/AuthContext';
 import { bookingsAPI, walletAPI, sessionsAPI } from '../../services/api';
-import { listenForBookingRequests, respondToBookingRequest } from '../../services/socketService';
+import { respondToBookingRequest } from '../../services/socketService';
 import { SocketContext } from '../../context/SocketContext';
 import { useFocusEffect } from '@react-navigation/native';
 
@@ -55,43 +55,13 @@ const HomeScreen = ({ navigation }) => {
     fetchPendingBookings();
     fetchWalletBalance();
     
-    // Set up socket listener for real-time booking requests
-    let cleanup;
-    if (socket && isConnected) {
-      console.log('Socket connected, setting up booking request listener');
-      cleanup = listenForBookingRequests(socket, (newBooking) => {
-        console.log('Received new booking request:', newBooking);
-        
-        // Validate booking data before processing
-        if (!newBooking) {
-          console.error('Received null or undefined booking data');
-          return;
-        }
-        
-        try {
-          // Create a sanitized booking object with all required fields and fallbacks
-          const sanitizedBooking = {
-            // Use optional chaining and nullish coalescing for safety
-            id: newBooking._id || newBooking.id || `temp-${Date.now()}`,
-            userId: (newBooking.user && newBooking.user._id) || newBooking.userId || 'unknown',
-            userName: newBooking.userInfo?.name || (newBooking.user && newBooking.user.name) || newBooking.userName || 'User',
-            userImage: (newBooking.user && newBooking.user.profileImage) || 'https://via.placeholder.com/100',
-            type: newBooking.type || 'chat',
-            status: newBooking.status || 'pending',
-            requestedTime: newBooking.createdAt || new Date().toISOString(),
-            userInfo: newBooking.userInfo // Store the complete userInfo for potential future use
-          };
-          
-          // Add the sanitized booking to the pending bookings list
-          setPendingBookings(prevBookings => [...prevBookings, sanitizedBooking]);
-        } catch (error) {
-          console.error('Error processing booking request:', error);
-        }
-      });
-    }
+    // NOTE: Booking request handling is now done globally by BookingRequestHandler component
+    // This prevents conflicts and ACK timeout issues from duplicate event listeners
+    console.log('HomeScreen useEffect - BookingRequestHandler handles booking requests globally');
     
+    // No cleanup needed since we're not setting up any listeners here
     return () => {
-      if (cleanup) cleanup();
+      // No cleanup needed
     };
   }, [socket, isConnected]);
   

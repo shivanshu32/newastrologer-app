@@ -31,12 +31,30 @@ export const SocketProvider = ({ children }) => {
   const reconnectTimer = useRef(null);
   const pingInterval = useRef(null);
   
+  // Periodic socket status monitoring
+  const startSocketMonitoring = (socket) => {
+    const monitorInterval = setInterval(() => {
+      console.log('🔍 [SocketContext] Socket Status Check:');
+      console.log('🔍 [SocketContext] Socket ID:', socket?.id);
+      console.log('🔍 [SocketContext] Connected:', socket?.connected);
+      console.log('🔍 [SocketContext] Transport:', socket?.io?.engine?.transport?.name);
+      console.log('🔍 [SocketContext] Ready State:', socket?.io?.engine?.readyState);
+      console.log('🔍 [SocketContext] Timestamp:', new Date().toISOString());
+    }, 30000); // Every 30 seconds
+    
+    return monitorInterval;
+  };
+  
   // Initialize or reinitialize socket
   const initializeSocket = async () => {
     // Don't initialize if already connecting or no token available
-    if (isConnecting || !userToken) return;
+    if (isConnecting || !userToken) {
+      console.log('⚠️ [SocketContext] Skipping socket init - connecting:', isConnecting, 'token:', !!userToken);
+      return;
+    }
     
     try {
+      console.log('🚀 [SocketContext] Initializing socket connection...');
       setIsConnecting(true);
       
       // Get authentication data
@@ -82,18 +100,49 @@ export const SocketProvider = ({ children }) => {
         transports: ['websocket', 'polling']
       });
       
-      // Set up event listeners
+      // Socket connection event handlers
       newSocket.on('connect', () => {
-        console.log('SocketContext: Socket connected, initializing ACK handling');
+        console.log(' [SocketContext] Socket connected successfully');
+        console.log(' [SocketContext] Socket ID:', newSocket.id);
+        console.log(' [SocketContext] Socket transport:', newSocket.io?.engine?.transport?.name);
+        console.log(' [SocketContext] Socket authenticated:', newSocket.auth);
+        console.log(' [SocketContext] Connection timestamp:', new Date().toISOString());
+        
         setIsConnected(true);
         setIsConnecting(false);
         reconnectAttempts.current = 0;
         
-        // Initialize ACK handling for reliable socket notifications
-        initializeAckHandling(newSocket);
+        // Clear any existing reconnect timer
+        if (reconnectTimer.current) {
+          clearTimeout(reconnectTimer.current);
+          reconnectTimer.current = null;
+        }
         
         // Start ping interval
         startPingInterval(newSocket);
+        
+        // Start socket monitoring
+        const monitorInterval = startSocketMonitoring(newSocket);
+        
+        // Store monitor interval for cleanup
+        newSocket._monitorInterval = monitorInterval;
+        
+        // Log socket readiness for booking requests
+        console.log('✅ [SocketContext] Socket ready to receive booking requests');
+        
+        // Test socket event reception
+        newSocket.on('test_event', (data) => {
+          console.log('🧪 [SocketContext] Test event received:', data);
+        });
+        
+        // Monitor all incoming events for debugging
+        const originalOn = newSocket.on;
+        newSocket.on = function(event, handler) {
+          if (event === 'booking_request') {
+            console.log('👂 [SocketContext] Booking request listener attached');
+          }
+          return originalOn.call(this, event, handler);
+        };
       });
       
       newSocket.on('connect_error', (error) => {
@@ -106,16 +155,27 @@ export const SocketProvider = ({ children }) => {
       });
       
       newSocket.on('disconnect', (reason) => {
+        console.log(' [SocketContext] Socket disconnected:', reason);
+        console.log(' [SocketContext] Previous Socket ID:', newSocket.id);
+        console.log(' [SocketContext] Disconnect timestamp:', new Date().toISOString());
+        
         setIsConnected(false);
         
-        // Clear ping interval
+        // Stop ping interval
         if (pingInterval.current) {
           clearInterval(pingInterval.current);
           pingInterval.current = null;
         }
         
-        // If disconnection wasn't intentional, try to reconnect
-        if (reason === 'transport close' || reason === 'ping timeout') {
+        // Stop socket monitoring
+        if (newSocket._monitorInterval) {
+          clearInterval(newSocket._monitorInterval);
+          newSocket._monitorInterval = null;
+        }
+        
+        // Only attempt reconnection if not manually disconnected
+        if (reason !== 'io client disconnect' && userToken) {
+          console.log(' [SocketContext] Scheduling reconnection...');
           scheduleReconnect();
         }
       });
