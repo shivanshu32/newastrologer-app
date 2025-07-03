@@ -81,7 +81,8 @@ const WalletScreen = () => {
       // Build query parameters based on active tab
       let queryParams = '';
       if (activeTab === 'earnings') {
-        queryParams = '?type=session_payment';
+        // Only show commission transactions for astrologers (their actual earnings)
+        queryParams = '?type=commission';
       } else if (activeTab === 'withdrawals') {
         queryParams = '?type=withdrawal';
       }
@@ -124,7 +125,6 @@ const WalletScreen = () => {
 
   const getTransactionDisplayType = (backendType) => {
     switch (backendType) {
-      case 'session_payment':
       case 'commission':
         return 'earning';
       case 'withdrawal':
@@ -141,10 +141,8 @@ const WalletScreen = () => {
 
   const getDefaultDescription = (type) => {
     switch (type) {
-      case 'session_payment':
-        return 'Consultation session payment';
       case 'commission':
-        return 'Platform commission';
+        return 'Earnings from consultation';
       case 'withdrawal':
         return 'Withdrawal to bank account';
       case 'bonus_credit':
@@ -258,9 +256,9 @@ const WalletScreen = () => {
       <View style={styles.balanceCard}>
         <Text style={styles.balanceLabel}>Available Balance</Text>
         <Text style={styles.balanceAmount}>₹{walletBalance}</Text>
-        <TouchableOpacity style={styles.withdrawButton}>
+        {/* <TouchableOpacity style={styles.withdrawButton}>
           <Text style={styles.withdrawButtonText}>Withdraw to Bank</Text>
-        </TouchableOpacity>
+        </TouchableOpacity> */}
       </View>
       
       <View style={styles.tabContainer}>

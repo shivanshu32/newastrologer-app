@@ -21,7 +21,7 @@ const BookingsScreen = ({ navigation }) => {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [activeTab, setActiveTab] = useState('active');
+  const [activeTab, setActiveTab] = useState('all');
   
   const { socket } = useSocket();
 
@@ -65,6 +65,8 @@ const BookingsScreen = ({ navigation }) => {
     if (!bookings || bookings.length === 0) return [];
 
     switch (activeTab) {
+      case 'all':
+        return bookings; // Show all bookings
       case 'active':
         return bookings.filter(booking => 
           ['pending', 'confirmed', 'waiting_for_user', 'in-progress'].includes(booking.status)
@@ -193,14 +195,89 @@ const BookingsScreen = ({ navigation }) => {
     }
   };
 
-  // Render booking item
+  // Get booking type icon
+  const getBookingTypeIcon = (type) => {
+    switch (type) {
+      case 'chat':
+        return 'chatbubble-outline';
+      case 'video':
+        return 'videocam-outline';
+      case 'voice':
+        return 'call-outline';
+      default:
+        return 'help-circle-outline';
+    }
+  };
+
+  // Format date for better display
+  const formatDate = (booking) => {
+    try {
+      // Try multiple possible date fields
+      const dateValue = booking.scheduledAt || booking.createdAt || booking.updatedAt;
+      if (!dateValue) return 'Date not set';
+      
+      const date = new Date(dateValue);
+      if (isNaN(date.getTime())) return 'Date not set';
+      
+      return date.toLocaleDateString('en-IN', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    } catch (error) {
+      console.log('Error formatting date:', error);
+      return 'Date not set';
+    }
+  };
+
+  // Format time for better display
+  const formatTime = (booking) => {
+    try {
+      // Try multiple possible date fields
+      const dateValue = booking.scheduledAt || booking.createdAt || booking.updatedAt;
+      if (!dateValue) return 'Time not set';
+      
+      const date = new Date(dateValue);
+      if (isNaN(date.getTime())) return 'Time not set';
+      
+      return date.toLocaleTimeString('en-IN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch (error) {
+      console.log('Error formatting time:', error);
+      return 'Time not set';
+    }
+  };
+
+  // Get action button text
+  const getActionButtonText = (booking) => {
+    switch (booking.status) {
+      case 'confirmed':
+      case 'waiting_for_user':
+        return 'Join Session';
+      case 'in-progress':
+        return 'Continue Session';
+      case 'pending':
+        return 'View Details';
+      case 'completed':
+        return 'View Details';
+      default:
+        return 'View Details';
+    }
+  };
+
+  // Render booking item with enhanced details
   const renderBookingItem = ({ item: booking }) => {
     const statusInfo = getStatusInfo(booking.status);
-    const isVideoCall = booking.type === 'video';
-    const isVoiceCall = booking.type === 'voice';
+    const typeIcon = getBookingTypeIcon(booking.type);
     const canJoin = ['confirmed', 'waiting_for_user'].includes(booking.status);
     const canComplete = booking.status === 'in-progress';
     const canCancel = ['pending', 'confirmed'].includes(booking.status);
+    
+    // Check if we have any valid date
+    const hasValidDate = booking.scheduledAt || booking.createdAt || booking.updatedAt;
 
     return (
       <View style={styles.bookingCard}>
@@ -208,71 +285,74 @@ const BookingsScreen = ({ navigation }) => {
           <View style={styles.userInfo}>
             <Image
               source={{ 
-                uri: booking.user?.profileImage || 'https://via.placeholder.com/50'
+                uri: 'https://freesvg.org/img/abstract-user-flat-4.png'
               }}
               style={styles.userImage}
             />
             <View style={styles.userDetails}>
               <Text style={styles.userName}>
-                {booking.user?.name || 'User'}
+                {booking.user?.displayName || booking.user?.name || 'User'}
               </Text>
-              <View style={styles.typeContainer}>
-                {isVideoCall && (
-                  <MaterialIcons name="videocam" size={16} color="#2196F3" />
-                )}
-                {isVoiceCall && (
-                  <MaterialIcons name="phone" size={16} color="#4CAF50" />
-                )}
-                <Text style={styles.typeText}>
-                  {booking.type?.charAt(0).toUpperCase() + booking.type?.slice(1)} Call
+              <View style={styles.bookingType}>
+                <Ionicons name={typeIcon} size={14} color="#666" />
+                <Text style={styles.bookingTypeText}>
+                  {booking.type?.charAt(0).toUpperCase() + booking.type?.slice(1)} Consultation
                 </Text>
               </View>
             </View>
           </View>
           
           <View style={[styles.statusBadge, { backgroundColor: statusInfo.color }]}>
-            <Ionicons name={statusInfo.icon} size={14} color="#fff" />
-            <Text style={styles.statusText}>{statusInfo.text}</Text>
+            <Text style={styles.statusText}>
+              {statusInfo.text}
+            </Text>
           </View>
         </View>
 
         <View style={styles.bookingDetails}>
-          <View style={styles.detailRow}>
+          <View style={styles.detailItem}>
             <Ionicons name="calendar-outline" size={16} color="#666" />
             <Text style={styles.detailText}>
-              {formatDateTime(booking.scheduledAt)}
+              {formatDate(booking)}
             </Text>
           </View>
           
-          <View style={styles.detailRow}>
-            <Ionicons name="cash-outline" size={16} color="#666" />
+          <View style={styles.detailItem}>
+            <Ionicons name="time-outline" size={16} color="#666" />
             <Text style={styles.detailText}>
-              ₹{booking.rate || booking.amount || 0}
+              {formatTime(booking)}
             </Text>
           </View>
 
-          {booking.duration && (
-            <View style={styles.detailRow}>
-              <Ionicons name="time-outline" size={16} color="#666" />
+          {booking.duration > 0 && (
+            <View style={styles.detailItem}>
+              <Ionicons name="hourglass-outline" size={16} color="#666" />
+              <Text style={styles.detailText}>{booking.duration} mins</Text>
+            </View>
+          )}
+
+          {(booking.totalAmount > 0 || booking.rate > 0 || booking.amount > 0) && (
+            <View style={styles.detailItem}>
+              <Ionicons name="cash-outline" size={16} color="#666" />
               <Text style={styles.detailText}>
-                {booking.duration} minutes
+                ₹{booking.totalAmount || booking.rate || booking.amount || 0}
               </Text>
             </View>
           )}
         </View>
 
-        {(canJoin || canComplete || canCancel) && (
-          <View style={styles.actionButtons}>
-            {canJoin && (
-              <TouchableOpacity
-                style={[styles.actionButton, styles.joinButton]}
-                onPress={() => handleBookingAction(booking, 'join')}
-              >
-                <Ionicons name="videocam" size={16} color="#fff" />
-                <Text style={styles.actionButtonText}>Join Session</Text>
-              </TouchableOpacity>
-            )}
-            
+        {/* Join Button for confirmed bookings */}
+        {canJoin ? (
+          <TouchableOpacity 
+            style={styles.joinButton}
+            onPress={() => handleBookingAction(booking, 'join')}
+          >
+            <Ionicons name="videocam" size={20} color="#fff" style={styles.joinButtonIcon} />
+            <Text style={styles.joinButtonText}>Join Session</Text>
+            <Ionicons name="arrow-forward" size={16} color="#fff" />
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.actionContainer}>
             {canComplete && (
               <TouchableOpacity
                 style={[styles.actionButton, styles.completeButton]}
@@ -349,9 +429,22 @@ const BookingsScreen = ({ navigation }) => {
 
   return (
     <View style={styles.container}>
+      {/* Header */}
+      <View style={styles.header}>
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={() => navigation.goBack()}
+        >
+          <Ionicons name="arrow-back" size={24} color="#fff" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>My Bookings</Text>
+        <View style={styles.headerSpacer} />
+      </View>
+
       {/* Tab Navigation */}
       <View style={styles.tabContainer}>
         {[
+          { key: 'all', label: 'All', icon: 'list-outline' },
           { key: 'active', label: 'Active', icon: 'play-circle-outline' },
           { key: 'completed', label: 'Completed', icon: 'checkmark-circle-outline' },
           { key: 'cancelled', label: 'Cancelled', icon: 'close-circle-outline' }
@@ -421,6 +514,36 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#f8f8f8',
   },
+  header: {
+    backgroundColor: '#673AB7',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 50,
+    paddingBottom: 16,
+    paddingHorizontal: 16,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  backButton: {
+    padding: 8,
+    marginRight: 8,
+  },
+  headerTitle: {
+    flex: 1,
+    fontSize: 20,
+    fontWeight: '600',
+    color: '#fff',
+    textAlign: 'center',
+  },
+  headerSpacer: {
+    width: 40, // Same width as back button to center the title
+  },
   tabContainer: {
     flexDirection: 'row',
     backgroundColor: '#fff',
@@ -467,23 +590,24 @@ const styles = StyleSheet.create({
   },
   bookingCard: {
     backgroundColor: '#fff',
+    marginHorizontal: 16,
+    marginVertical: 8,
     borderRadius: 12,
     padding: 16,
-    marginBottom: 12,
     shadowColor: '#000',
     shadowOffset: {
       width: 0,
       height: 2,
     },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
   bookingHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: 12,
+    alignItems: 'center',
+    marginBottom: 16,
   },
   userInfo: {
     flexDirection: 'row',
@@ -505,62 +629,78 @@ const styles = StyleSheet.create({
     color: '#333',
     marginBottom: 4,
   },
-  typeContainer: {
+  bookingType: {
     flexDirection: 'row',
     alignItems: 'center',
   },
-  typeText: {
+  bookingTypeText: {
     fontSize: 14,
     color: '#666',
     marginLeft: 4,
   },
   statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
   },
   statusText: {
     fontSize: 12,
-    color: '#fff',
     fontWeight: '600',
-    marginLeft: 4,
+    color: '#fff',
   },
   bookingDetails: {
-    marginBottom: 12,
+    marginBottom: 16,
   },
-  detailRow: {
+  detailItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 6,
+    marginBottom: 8,
   },
   detailText: {
     fontSize: 14,
     color: '#666',
     marginLeft: 8,
-  },
-  actionButtons: {
-    flexDirection: 'row',
-    gap: 8,
-  },
-  actionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 6,
     flex: 1,
   },
   joinButton: {
     backgroundColor: '#4CAF50',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  joinButtonIcon: {
+    marginRight: 8,
+  },
+  joinButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    flex: 1,
+    textAlign: 'center',
+  },
+  actionContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 8,
+    flex: 1,
+    marginHorizontal: 4,
   },
   completeButton: {
     backgroundColor: '#2196F3',
   },
   cancelButton: {
-    backgroundColor: '#fff',
+    backgroundColor: 'transparent',
     borderWidth: 1,
     borderColor: '#F44336',
   },
@@ -568,7 +708,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: '#fff',
-    marginLeft: 4,
+    marginLeft: 6,
   },
   emptyContainer: {
     flex: 1,

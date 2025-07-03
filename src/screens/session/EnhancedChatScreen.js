@@ -135,48 +135,31 @@ const EnhancedChatScreen = ({ route, navigation }) => {
 
   // Handle new messages
   const handleNewMessage = useCallback((message) => {
-    console.log('🔴 [ASTROLOGER-APP] EnhancedChatScreen: Received message:', message);
-    console.log('🔴 [ASTROLOGER-APP] Message sender:', message.sender);
-    console.log('🔴 [ASTROLOGER-APP] Message senderId:', message.senderId);
-    console.log('🔴 [ASTROLOGER-APP] Current astrologerId:', astrologerId);
-    console.log('🔴 [ASTROLOGER-APP] Message content fields:', {
-      content: message.content,
-      text: message.text,
-      message: message.message
-    });
+    console.log('🔴 [ASTROLOGER-APP] Message received:', message.id);
     
     setMessages(prevMessages => {
       // Avoid duplicate messages
       const exists = prevMessages.some(msg => msg.id === message.id);
       if (exists) {
-        console.log('🔴 [ASTROLOGER-APP] Duplicate message ignored:', message.id);
         return prevMessages;
       }
       
-      const newMessages = [...prevMessages, message].sort((a, b) => 
-        new Date(a.timestamp) - new Date(b.timestamp)
-      );
+      // Add message without sorting to prevent blocking
+      const newMessages = [...prevMessages, message];
       
-      console.log('🔴 [ASTROLOGER-APP] Messages updated, total count:', newMessages.length);
-      console.log('🔴 [ASTROLOGER-APP] Latest message in state:', {
-        id: message.id,
-        content: message.content,
-        text: message.text,
-        message: message.message,
-        sender: message.sender
-      });
-      
-      // Auto-scroll to bottom
+      // Auto-scroll to bottom immediately for instant message display
       setTimeout(() => {
         flatListRef.current?.scrollToEnd({ animated: true });
-      }, 100);
+      }, 0);
       
       return newMessages;
     });
 
-    // Mark message as read if it's from user
+    // Mark message as read if it's from user (non-blocking)
     if (message.senderId !== astrologerId && chatManagerRef.current) {
-      chatManagerRef.current.markMessageAsRead(message.id);
+      setTimeout(() => {
+        chatManagerRef.current.markMessageAsRead(message.id);
+      }, 0);
     }
   }, [astrologerId]);
 
@@ -206,30 +189,19 @@ const EnhancedChatScreen = ({ route, navigation }) => {
 
   // Handle status updates (timer, session end, etc.)
   const handleStatusUpdate = useCallback((data) => {
-    console.log('🔴 [ASTROLOGER-APP] EnhancedChatScreen: Status update received:', data);
-    
     if (data.type === 'timer') {
       // Use consistent field names with user app - check both durationSeconds and seconds
       const timerValue = data.durationSeconds !== undefined ? data.durationSeconds : data.seconds;
-      console.log('🔴 [ASTROLOGER-APP] Timer update:', timerValue);
       setSessionTimer(timerValue);
       
       // If we're receiving timer updates but session isn't active, activate it
       if (!sessionActive && timerValue > 0) {
-        console.log('🔴 [ASTROLOGER-APP] Timer running but session not active - activating session');
         setSessionActive(true);
         setConnectionStatus('session_active');
       }
     } else if (data.type === 'session_started') {
-      console.log('🔴 [ASTROLOGER-APP] Session started, activating session');
-      console.log('🔴 [ASTROLOGER-APP] Session data:', data);
-      console.log('🔴 [ASTROLOGER-APP] Current sessionActive:', sessionActive);
-      
       setSessionActive(true);
       setConnectionStatus('session_active');
-      
-      console.log('🔴 [ASTROLOGER-APP] Session activated via session_started event');
-      // Remove local timer - rely on backend timer events only
     } else if (data.type === 'session_end') {
       console.log('🔴 [ASTROLOGER-APP] Session end received');
       setSessionEnded(true);

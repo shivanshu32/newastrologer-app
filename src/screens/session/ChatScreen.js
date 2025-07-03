@@ -425,7 +425,7 @@ const ChatScreen = ({ route, navigation }) => {
             styles.messageText,
             isUser ? styles.userMessageText : styles.astrologerMessageText
           ]}>
-            {item.text}
+            {item.content || item.text || item.message || 'Message content unavailable'}
           </Text>
           <View style={styles.messageFooter}>
             <Text style={styles.messageTime}>{formatMessageTime(item.timestamp)}</Text>

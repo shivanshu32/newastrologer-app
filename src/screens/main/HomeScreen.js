@@ -114,55 +114,68 @@ const HomeScreen = ({ navigation }) => {
       
       let allItems = [];
       
-      // Process pending bookings
+      // Process pending bookings - only show new requests
       if (bookingsResponse.data && bookingsResponse.data.data && Array.isArray(bookingsResponse.data.data)) {
-        const bookings = bookingsResponse.data.data.map(booking => {
-          if (!booking) return null;
-          
-          try {
-            return {
-              id: booking._id || `temp-${Date.now()}`,
-              userId: (booking.user && booking.user._id) || 'unknown',
-              userName: (booking.user && booking.user.name) || 'User',
-              userImage: (booking.user && booking.user.profileImage) || 'https://via.placeholder.com/100',
-              type: booking.type || 'chat',
-              status: 'pending',
-              requestedTime: booking.createdAt || new Date().toISOString(),
-              itemType: 'booking', // Distinguish from sessions
-            };
-          } catch (err) {
-            console.error('Error processing booking item:', err);
-            return null;
-          }
-        }).filter(booking => booking !== null);
+        const bookings = bookingsResponse.data.data
+          .filter(booking => {
+            // Only include bookings that are truly pending/new requests
+            const validStatuses = ['pending', 'confirmed', 'waiting_for_user'];
+            return booking && validStatuses.includes(booking.status);
+          })
+          .map(booking => {
+            if (!booking) return null;
+            
+            try {
+              return {
+                id: booking._id || `temp-${Date.now()}`,
+                userId: (booking.user && booking.user._id) || 'unknown',
+                userName: (booking.user && booking.user.name) || 'User',
+                userImage: 'https://freesvg.org/img/abstract-user-flat-4.png',
+                type: booking.type || 'chat',
+                status: booking.status || 'pending', // Use actual status from backend
+                requestedTime: booking.createdAt || new Date().toISOString(),
+                itemType: 'booking', // Distinguish from sessions
+                rate: booking.rate || 0, // Add rate for per minute display
+              };
+            } catch (err) {
+              console.error('Error processing booking item:', err);
+              return null;
+            }
+          }).filter(booking => booking !== null);
         
         allItems = [...allItems, ...bookings];
       }
       
-      // Process active sessions
+      // Process active sessions - only show truly active ones
       if (sessionsResponse.data && sessionsResponse.data.data && Array.isArray(sessionsResponse.data.data)) {
-        const sessions = sessionsResponse.data.data.map(session => {
-          if (!session || !session.booking) return null;
-          
-          try {
-            const booking = session.booking;
-            return {
-              id: session._id || `session-${Date.now()}`,
-              sessionId: session._id,
-              userId: (booking.user && booking.user._id) || 'unknown',
-              userName: (booking.user && booking.user.name) || 'User',
-              userImage: (booking.user && booking.user.profileImage) || 'https://via.placeholder.com/100',
-              type: booking.type || 'chat',
-              status: 'in_progress',
-              requestedTime: session.startTime || session.createdAt || new Date().toISOString(),
-              itemType: 'session', // Distinguish from bookings
-              duration: session.duration || 0,
-            };
-          } catch (err) {
-            console.error('Error processing session item:', err);
-            return null;
-          }
-        }).filter(session => session !== null);
+        const sessions = sessionsResponse.data.data
+          .filter(session => {
+            // Only include sessions that are truly in progress
+            const validStatuses = ['in_progress', 'active', 'ongoing'];
+            return session && session.status && validStatuses.includes(session.status);
+          })
+          .map(session => {
+            if (!session || !session.booking) return null;
+            
+            try {
+              const booking = session.booking;
+              return {
+                id: session._id || `session-${Date.now()}`,
+                sessionId: session._id,
+                userId: (booking.user && booking.user._id) || 'unknown',
+                userName: (booking.user && booking.user.name) || 'User',
+                userImage: 'https://freesvg.org/img/abstract-user-flat-4.png',
+                type: booking.type || 'chat',
+                status: session.status || 'in_progress', // Use actual session status
+                requestedTime: session.startTime || session.createdAt || new Date().toISOString(),
+                itemType: 'session', // Distinguish from bookings
+                duration: session.duration || 0,
+              };
+            } catch (err) {
+              console.error('Error processing session item:', err);
+              return null;
+            }
+          }).filter(session => session !== null);
         
         allItems = [...allItems, ...sessions];
       }
@@ -337,8 +350,8 @@ const HomeScreen = ({ navigation }) => {
           
           <View style={styles.detailRow}>
             <Ionicons name="cash" size={16} color="#4CAF50" />
-            <Text style={styles.detailLabel}>Amount:</Text>
-            <Text style={styles.detailValue}>₹{item.amount || item.rate || 'N/A'}</Text>
+            <Text style={styles.detailLabel}>Rate:</Text>
+            <Text style={styles.detailValue}>₹{item.rate || item.amount || 'N/A'} / min</Text>
           </View>
           
           {item.duration && (
@@ -361,20 +374,30 @@ const HomeScreen = ({ navigation }) => {
         {/* Different action buttons based on item type */}
         <View style={styles.actionButtons}>
           {isActiveSession ? (
-            // Active session - show join button
-            <TouchableOpacity
-              style={[styles.actionButton, styles.joinButton]}
-              onPress={() => handleJoinSession(item)}
-            >
-              <Ionicons name="arrow-forward-circle" size={18} color="#fff" />
-              <Text style={styles.joinButtonText}>Continue Session</Text>
-            </TouchableOpacity>
+            // Active session - show join button (but not for voice)
+            item.type !== 'voice' ? (
+              <TouchableOpacity
+                style={[styles.actionButton, styles.joinButton]}
+                onPress={() => handleJoinSession(item)}
+              >
+                <Ionicons name="arrow-forward-circle" size={18} color="#fff" />
+                <Text style={styles.joinButtonText}>Continue Session</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.voiceSessionInfo}>
+                <Ionicons name="call" size={18} color="#FF9800" />
+                <Text style={styles.voiceSessionText}>Voice session in progress</Text>
+              </View>
+            )
           ) : (
             // Pending booking - show accept/decline buttons
             <>
               <TouchableOpacity
                 style={[styles.actionButton, styles.rejectButton]}
-                onPress={() => handleRejectBooking(item)}
+                onPress={() => {
+                  console.log('Declining booking:', item.id);
+                  handleRejectBooking(item);
+                }}
                 disabled={loading}
               >
                 <Ionicons name="close-circle" size={18} color="#FF5252" />
@@ -382,7 +405,10 @@ const HomeScreen = ({ navigation }) => {
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.actionButton, styles.acceptButton]}
-                onPress={() => handleAcceptBooking(item)}
+                onPress={() => {
+                  console.log('Accepting booking:', item.id);
+                  handleAcceptBooking(item);
+                }}
                 disabled={loading}
               >
                 <Ionicons name="checkmark-circle" size={18} color="#fff" />
@@ -754,6 +780,22 @@ const styles = StyleSheet.create({
   },
   joinButtonText: {
     color: '#fff',
+    fontWeight: 'bold',
+    marginLeft: 5,
+  },
+  voiceSessionInfo: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    backgroundColor: '#FFF3E0',
+    borderRadius: 5,
+    borderColor: '#FF9800',
+    borderWidth: 1,
+  },
+  voiceSessionText: {
+    color: '#FF9800',
     fontWeight: 'bold',
     marginLeft: 5,
   },
