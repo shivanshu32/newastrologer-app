@@ -103,20 +103,7 @@ const WaitingRoomScreen = () => {
               text: 'OK',
               onPress: () => {
                 // Navigate back to dashboard since Exotel will handle the call
-                // Use proper tab navigation reset
-                navigation.getParent()?.reset({
-                  index: 0,
-                  routes: [
-                    {
-                      name: 'Home',
-                      state: {
-                        routes: [{ name: 'HomeMain' }],
-                        index: 0,
-                      },
-                    },
-                  ],
-                });
-                console.log('✅ [ASTROLOGER-APP] Navigation reset to Home tab after voice call setup');
+                navigation.navigate('Home');
               }
             }
           ]
@@ -186,41 +173,6 @@ const WaitingRoomScreen = () => {
       // Handle any direct notifications here if needed
     };
 
-    // Handle session end events to prevent getting stuck in waiting screen
-    const handleSessionEnd = (data) => {
-      console.log('🔚 [ASTROLOGER-APP] Session ended in WaitingRoom:', data);
-      
-      // Reset navigation guard
-      hasNavigated.current = false;
-      
-      // Navigate to Home screen using proper tab navigation reset
-      // First navigate to the Home tab, then reset its stack
-      navigation.getParent()?.reset({
-        index: 0,
-        routes: [
-          {
-            name: 'Home',
-            state: {
-              routes: [{ name: 'HomeMain' }],
-              index: 0,
-            },
-          },
-        ],
-      });
-      
-      console.log('✅ [ASTROLOGER-APP] Navigation reset to Home tab after session end');
-    };
-    
-    const consultationEndedHandler = (data) => {
-      console.log('🔚 [ASTROLOGER-APP] Consultation ended in WaitingRoom:', data);
-      handleSessionEnd(data);
-    };
-    
-    const sessionEndHandler = (data) => {
-      console.log('🔚 [ASTROLOGER-APP] Session end in WaitingRoom:', data);
-      handleSessionEnd(data);
-    };
-
     // Handle Exotel voice call events
     const voiceCallInitiatedHandler = (data) => {
       console.log('📞 [ASTROLOGER-APP] Voice call initiated:', data);
@@ -242,35 +194,19 @@ const WaitingRoomScreen = () => {
             text: 'Go Back',
             onPress: () => {
               // Navigate back to dashboard when call fails
-              // Use proper tab navigation reset
-              navigation.getParent()?.reset({
-                index: 0,
-                routes: [
-                  {
-                    name: 'Home',
-                    state: {
-                      routes: [{ name: 'HomeMain' }],
-                      index: 0,
-                    },
-                  },
-                ],
-              });
-              console.log('✅ [ASTROLOGER-APP] Navigation reset to Home tab after voice call failure');
+              navigation.navigate('Home');
             }
           }
         ]
       );
-      return true; // Prevent default behavior
     };
 
-    // Add back button listener using the correct API
-    const backHandler = BackHandler.addEventListener('hardwareBackPress', onBackPress);
+    // Set up event listeners
+    socket.on('user_joined_consultation', userJoinedHandler);
     socket.on('join_consultation', joinConsultationHandler);
     socket.on('direct_notification', directNotificationHandler);
     socket.on('voice_call_initiated', voiceCallInitiatedHandler);
     socket.on('voice_call_failed', voiceCallFailedHandler);
-    socket.on('consultation_ended', consultationEndedHandler);
-    socket.on('session_end', sessionEndHandler);
 
     // Cleanup listeners
     return () => {
@@ -280,8 +216,6 @@ const WaitingRoomScreen = () => {
       socket.off('direct_notification', directNotificationHandler);
       socket.off('voice_call_initiated', voiceCallInitiatedHandler);
       socket.off('voice_call_failed', voiceCallFailedHandler);
-      socket.off('consultation_ended', consultationEndedHandler);
-      socket.off('session_end', sessionEndHandler);
       
       // Leave the room when component unmounts
       socket.emit('leave_room', { bookingId });

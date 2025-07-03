@@ -334,12 +334,15 @@ const BookingRequestHandler = () => {
         // Navigate to WaitingRoom when booking is accepted by astrologer
         if (data.status === 'accepted' && data.bookingId) {
           console.log(' [DEBUG] Booking accepted - navigating to WaitingRoom');
-          navigation.navigate('WaitingRoom', {
-            bookingId: data.bookingId,
-            sessionId: data.sessionId,
-            roomId: data.roomId,
-            consultationType: data.consultationType || 'video',
-            bookingDetails: data.bookingDetails || data
+          navigation.navigate('Bookings', {
+            screen: 'WaitingRoom',
+            params: {
+              bookingId: data.bookingId,
+              sessionId: data.sessionId,
+              roomId: data.roomId,
+              consultationType: data.consultationType || 'video',
+              bookingDetails: data.bookingDetails || data
+            }
           });
         }
       } catch (error) {
