@@ -15,6 +15,7 @@ import {
   TouchableWithoutFeedback,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { CommonActions } from '@react-navigation/native';
 import ChatConnectionManager from '../../utils/ChatConnectionManager';
 
 const { width, height } = Dimensions.get('window');
@@ -378,7 +379,13 @@ const EnhancedChatScreen = ({ route, navigation }) => {
             text: 'OK',
             onPress: () => {
               console.log('🔴 [ASTROLOGER-APP] Navigating to Home after session end');
-              navigation.navigate('Home');
+              // Reset navigation to ensure clean state - this will reset all stacks
+              navigation.dispatch(
+                CommonActions.reset({
+                  index: 0,
+                  routes: [{ name: 'Home' }],
+                })
+              );
             }
           }
         ]
@@ -415,8 +422,13 @@ const EnhancedChatScreen = ({ route, navigation }) => {
             text: 'OK',
             onPress: () => {
               console.log('🔴 [ASTROLOGER-APP] Navigating to Home after session end');
-              // Navigate to Home screen after session end
-              navigation.navigate('Home');
+              // Reset navigation to ensure clean state - this will reset all stacks
+              navigation.dispatch(
+                CommonActions.reset({
+                  index: 0,
+                  routes: [{ name: 'Home' }],
+                })
+              );
             }
           }
         ],
@@ -521,8 +533,13 @@ const EnhancedChatScreen = ({ route, navigation }) => {
             if (chatManagerRef.current && sessionId) {
               chatManagerRef.current.endSession(sessionId);
             }
-            // Navigate to Home screen instead of going back to waiting screen
-            navigation.navigate('Home');
+            // Reset navigation to ensure clean state - this will reset all stacks
+            navigation.dispatch(
+              CommonActions.reset({
+                index: 0,
+                routes: [{ name: 'Home' }],
+              })
+            );
           }
         }
       ]
@@ -676,6 +693,17 @@ const EnhancedChatScreen = ({ route, navigation }) => {
         
         <View style={styles.headerCenter}>
           <Text style={styles.headerTitle}>Chat Consultation</Text>
+          {userInfo && (
+            <View style={styles.userInfoHeader}>
+              <Text style={styles.userInfoHeaderText}>
+                {userInfo.name} • {userInfo.dateOfBirth ? new Date(userInfo.dateOfBirth).toLocaleDateString('en-IN', {
+                  day: '2-digit',
+                  month: '2-digit', 
+                  year: 'numeric'
+                }) : 'DOB N/A'} • {userInfo.placeOfBirth || 'POB N/A'}
+              </Text>
+            </View>
+          )}
           <View style={styles.timerContainer}>
             <Text style={styles.timerText}>{formatTimer(sessionTimer)}</Text>
           </View>
@@ -699,34 +727,7 @@ const EnhancedChatScreen = ({ route, navigation }) => {
         </View>
       )}
 
-      {/* User Information Panel */}
-      {userInfo && (
-        <View style={styles.userInfoPanel}>
-          <View style={styles.userInfoHeader}>
-            <Text style={styles.userInfoTitle}>User Details</Text>
-          </View>
-          <View style={styles.userInfoContent}>
-            <View style={styles.userInfoRow}>
-              <Text style={styles.userInfoLabel}>Name:</Text>
-              <Text style={styles.userInfoValue}>{userInfo.name}</Text>
-            </View>
-            <View style={styles.userInfoRow}>
-              <Text style={styles.userInfoLabel}>Date of Birth:</Text>
-              <Text style={styles.userInfoValue}>
-                {userInfo.dateOfBirth ? new Date(userInfo.dateOfBirth).toLocaleDateString('en-IN', {
-                  day: '2-digit',
-                  month: '2-digit', 
-                  year: 'numeric'
-                }) : 'Not provided'}
-              </Text>
-            </View>
-            <View style={styles.userInfoRow}>
-              <Text style={styles.userInfoLabel}>Place of Birth:</Text>
-              <Text style={styles.userInfoValue}>{userInfo.placeOfBirth}</Text>
-            </View>
-          </View>
-        </View>
-      )}
+
 
       {/* Messages List */}
       <FlatList
@@ -817,6 +818,14 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 18,
     fontWeight: 'bold',
+  },
+  userInfoHeaderText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '500',
+    opacity: 0.9,
+    textAlign: 'center',
+    marginTop: 2,
   },
   timerContainer: {
     backgroundColor: 'rgba(255,255,255,0.2)',

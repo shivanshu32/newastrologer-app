@@ -72,18 +72,10 @@ export const AuthProvider = ({ children }) => {
         throw new Error(response.data.message || 'Failed to send OTP');
       }
       
-      // Display OTP in alert - Backend returns OTP in response.data.data.otp
-      if (response.data.data && response.data.data.otp) {
-        Alert.alert(
-          'OTP Generated', 
-          `Your OTP is: ${response.data.data.otp}`,
-          [{ text: 'OK' }]
-        );
-      }
-      
+      // OTP sent via SMS - no longer displayed in app for security
       console.log('OTP request successful');
       setIsLoading(false);
-      return { success: true };
+      return { success: true, message: response.data.message || 'OTP sent successfully to your mobile number' };
     } catch (error) {
       console.log('Error requesting OTP:', error);
       console.log('Error details:', error.message);
