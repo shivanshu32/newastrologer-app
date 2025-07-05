@@ -73,9 +73,9 @@ export const SocketProvider = ({ children }) => {
   
   // Initialize or reinitialize socket
   const initializeSocket = async () => {
-    // Don't initialize if already connecting or no token available
-    if (isConnecting || !userToken) {
-      console.log('⚠️ [SocketContext] Skipping socket init - connecting:', isConnecting, 'token:', !!userToken);
+    // Don't initialize if already connecting or no token/astrologer available
+    if (isConnecting || !token || !astrologer) {
+      console.log('⚠️ [SocketContext] Skipping socket init - connecting:', isConnecting, 'token:', !!token, 'astrologer:', !!astrologer);
       return;
     }
     
@@ -83,21 +83,14 @@ export const SocketProvider = ({ children }) => {
       console.log('🚀 [SocketContext] Initializing socket connection...');
       setIsConnecting(true);
       
-      // Get authentication data
-      const token = await AsyncStorage.getItem('astrologerToken');
-      let astrologerId = await AsyncStorage.getItem('astrologerId');
+      // Get astrologer ID from the AuthContext astrologer object
+      const astrologerId = astrologer._id || astrologer.id;
       
-      // If astrologerId is not found directly, try getting it from astrologerData
-      if (!astrologerId) {
-        const astrologerData = await AsyncStorage.getItem('astrologerData');
-        if (astrologerData) {
-          const parsedAstrologerData = JSON.parse(astrologerData);
-          astrologerId = parsedAstrologerData._id || parsedAstrologerData.id;
-          console.log('SocketContext: Extracted astrologerId from astrologerData:', astrologerId);
-        }
-      }
+      console.log('🔗 [SocketContext] Authentication data - token exists:', !!token, 'astrologerId:', astrologerId);
       
-      console.log('SocketContext: Authentication data - token exists:', !!token, 'astrologerId:', astrologerId);
+      // Store references for reconnection
+      astrologerIdRef.current = astrologerId;
+      tokenRef.current = token;
       
       if (!token || !astrologerId) {
         console.log('SocketContext: No user token, cleaning up socket if any');
@@ -118,93 +111,85 @@ export const SocketProvider = ({ children }) => {
           role: 'astrologer'
         },
         path: '/ws',
-        reconnection: true,
-        reconnectionAttempts: 10,
-        reconnectionDelay: 1000,
-        reconnectionDelayMax: 5000,
-        timeout: 20000,
-        transports: ['websocket', 'polling']
+        ...SOCKET_CONFIG
       });
+      
+      // Store references for reconnection
+      socketRef.current = newSocket;
       
       // Socket connection event handlers
       newSocket.on('connect', () => {
-        console.log('✅ [SocketContext] Socket connected successfully');
-        console.log('🔍 [SocketContext] Socket ID:', newSocket.id);
-        console.log('🔍 [SocketContext] Socket transport:', newSocket.io?.engine?.transport?.name);
-        console.log('🔍 [SocketContext] Socket authenticated:', newSocket.auth);
-        console.log('🔍 [SocketContext] Connection timestamp:', new Date().toISOString());
-        console.log('🔍 [SocketContext] Astrologer ID:', astrologerId);
-        console.log('🔍 [SocketContext] Previous socket ID:', socket?.id || 'none');
-        console.log('🔍 [SocketContext] Socket ID changed:', socket?.id !== newSocket.id);
-        
+        console.log('🔗 [SOCKET] Astrologer connected successfully');
         setIsConnected(true);
         setIsConnecting(false);
+        setConnectionStatus('connected');
+        setConnectionAttempts(0);
         reconnectAttempts.current = 0;
+        isInitializingRef.current = false;
         
         // Clear any existing reconnect timer
-        if (reconnectTimer.current) {
-          clearTimeout(reconnectTimer.current);
-          reconnectTimer.current = null;
+        if (reconnectTimeoutRef.current) {
+          clearTimeout(reconnectTimeoutRef.current);
+          reconnectTimeoutRef.current = null;
         }
         
         // Start ping interval
         startPingInterval(newSocket);
         
-        // Start socket monitoring
-        const monitorInterval = startSocketMonitoring(newSocket);
+        // Start heartbeat interval
+        startHeartbeatInterval(newSocket);
         
-        // Store monitor interval for cleanup
-        newSocket._monitorInterval = monitorInterval;
-        
-        // Log socket readiness for booking requests
-        console.log('✅ [SocketContext] Socket ready to receive booking requests');
-        
-        // Test socket event reception
-        newSocket.on('test_event', (data) => {
-          console.log('🧪 [SocketContext] Test event received:', data);
-        });
-        
-        // Monitor all incoming events for debugging
-        const originalOn = newSocket.on;
-        newSocket.on = function(event, handler) {
-          if (event === 'booking_request') {
-            console.log('👂 [SocketContext] Booking request listener attached');
-          }
-          return originalOn.call(this, event, handler);
-        };
+        console.log('✅ [SOCKET] Astrologer socket ready to receive booking requests');
       });
       
       newSocket.on('connect_error', (error) => {
-        console.error('Socket connection error:', error);
+        console.error('❌ [SOCKET] Astrologer connection error:', error);
         setIsConnecting(false);
+        setConnectionStatus('disconnected');
+        setConnectionAttempts(prev => prev + 1);
+        isInitializingRef.current = false;
         
         if (reconnectAttempts.current < MAX_RECONNECT_ATTEMPTS) {
+          console.log(`🔄 [SOCKET] Scheduling reconnection attempt ${reconnectAttempts.current + 1}/${MAX_RECONNECT_ATTEMPTS}`);
           scheduleReconnect();
+        } else {
+          console.error('❌ [SOCKET] Max reconnection attempts reached');
+          setConnectionStatus('failed');
         }
       });
       
       newSocket.on('disconnect', (reason) => {
-        console.log(' [SocketContext] Socket disconnected:', reason);
-        console.log(' [SocketContext] Previous Socket ID:', newSocket.id);
-        console.log(' [SocketContext] Disconnect timestamp:', new Date().toISOString());
-        
+        console.log(`🔌 [SOCKET] Astrologer disconnected, reason: ${reason}`);
         setIsConnected(false);
+        setConnectionStatus('disconnected');
         
-        // Stop ping interval
+        // Clear ping interval
         if (pingInterval.current) {
           clearInterval(pingInterval.current);
           pingInterval.current = null;
         }
         
-        // Stop socket monitoring
-        if (newSocket._monitorInterval) {
-          clearInterval(newSocket._monitorInterval);
-          newSocket._monitorInterval = null;
+        // Clear heartbeat interval
+        if (heartbeatIntervalRef.current) {
+          clearInterval(heartbeatIntervalRef.current);
+          heartbeatIntervalRef.current = null;
         }
         
-        // Only attempt reconnection if not manually disconnected
-        if (reason !== 'io client disconnect' && userToken) {
-          console.log(' [SocketContext] Scheduling reconnection...');
+        // Only attempt reconnection for certain disconnect reasons and if we have valid credentials
+        const shouldReconnect = [
+          'transport close',
+          'ping timeout',
+          'transport error',
+          'server disconnect'
+        ].includes(reason) && astrologerIdRef.current && tokenRef.current;
+        
+        if (shouldReconnect && reconnectAttempts.current < MAX_RECONNECT_ATTEMPTS) {
+          console.log(`🔄 [SOCKET] Scheduling reconnection for reason: ${reason}`);
+          scheduleReconnect();
+        } else if (reason === 'io client disconnect') {
+          console.log('🔌 [SOCKET] Client initiated disconnect, not reconnecting');
+        } else {
+          console.log(`⚠️ [SOCKET] Not reconnecting for reason: ${reason}`);
           scheduleReconnect();
         }
       });
@@ -236,95 +221,165 @@ export const SocketProvider = ({ children }) => {
     // Set up new interval
     pingInterval.current = setInterval(() => {
       if (socketInstance && socketInstance.connected) {
-        console.log('SocketContext: Sending ping to keep connection alive');
+        console.log('🏓 [PING] Sending ping to keep connection alive');
         socketInstance.emit('ping');
       } else {
-        console.log('SocketContext: Socket not connected, cannot send ping');
+        console.log('⚠️ [PING] Socket not connected, cannot send ping');
       }
     }, PING_INTERVAL);
   };
   
-  // Schedule reconnection attempt
+  // Start heartbeat interval to keep connection alive with ping/pong mechanism
+  const startHeartbeatInterval = (socketInstance) => {
+    // Clear existing interval if any
+    if (heartbeatIntervalRef.current) {
+      clearInterval(heartbeatIntervalRef.current);
+    }
+    
+    // Set up ping/pong heartbeat mechanism
+    socketInstance.on('ping', () => {
+      console.log('🏓 [HEARTBEAT] Received ping from server, sending pong');
+      socketInstance.emit('pong');
+      setLastSeen(Date.now());
+    });
+    
+    // Set up new interval for client-side heartbeat
+    heartbeatIntervalRef.current = setInterval(() => {
+      if (socketInstance && socketInstance.connected) {
+        console.log('🏓 [HEARTBEAT] Sending astrologer heartbeat');
+        socketInstance.emit('client_heartbeat', { timestamp: Date.now() });
+        setLastSeen(Date.now());
+      } else {
+        console.log('⚠️ [HEARTBEAT] Socket not connected, cannot send heartbeat');
+        // Attempt reconnection if socket is not connected
+        if (!isInitializingRef.current) {
+          scheduleReconnect();
+        }
+      }
+    }, 30000); // 30 seconds
+  };
+  
+  // Schedule reconnection attempt with exponential backoff
   const scheduleReconnect = () => {
+    // Don't reconnect if already initializing or no credentials
+    if (isInitializingRef.current || !astrologerIdRef.current || !tokenRef.current) {
+      console.log('⚠️ [RECONNECT] Skipping reconnection - already initializing or no credentials');
+      return;
+    }
+    
     // Clear any existing reconnect timer
-    if (reconnectTimer.current) {
-      clearTimeout(reconnectTimer.current);
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
     }
     
     reconnectAttempts.current += 1;
+    setConnectionAttempts(reconnectAttempts.current);
     
-    // Calculate exponential backoff delay (with a maximum)
-    const delay = Math.min(RECONNECT_DELAY * Math.pow(1.5, reconnectAttempts.current - 1), 30000);
+    // Exponential backoff with jitter
+    const baseDelay = RECONNECT_DELAY;
+    const exponentialDelay = baseDelay * Math.pow(2, reconnectAttempts.current - 1);
+    const jitter = Math.random() * 1000; // Add up to 1 second of jitter
+    const delay = Math.min(exponentialDelay + jitter, 30000); // Cap at 30 seconds
     
-    console.log(`SocketContext: Scheduling reconnect attempt ${reconnectAttempts.current}/${MAX_RECONNECT_ATTEMPTS} in ${delay}ms`);
+    console.log(`🔄 [RECONNECT] Scheduling attempt ${reconnectAttempts.current}/${MAX_RECONNECT_ATTEMPTS} in ${Math.round(delay)}ms`);
+    setConnectionStatus('reconnecting');
     
-    // Schedule reconnect
-    reconnectTimer.current = setTimeout(() => {
-      console.log(`SocketContext: Attempting reconnect #${reconnectAttempts.current}...`);
-      initializeSocket();
+    reconnectTimeoutRef.current = setTimeout(() => {
+      if (reconnectAttempts.current <= MAX_RECONNECT_ATTEMPTS && astrologerIdRef.current && tokenRef.current) {
+        console.log(`🔄 [RECONNECT] Attempting reconnection ${reconnectAttempts.current}/${MAX_RECONNECT_ATTEMPTS}`);
+        isInitializingRef.current = true;
+        initializeSocket();
+      } else {
+        console.error('❌ [RECONNECT] Max attempts reached or no credentials available');
+        setConnectionStatus('failed');
+      }
     }, delay);
   };
   
-  // Clean up socket and related resources
+  // Cleanup socket connection
   const cleanupSocket = () => {
-    if (socket) {
-      // Clear intervals
+    console.log('🧹 [CLEANUP] Cleaning up astrologer socket connection');
+    
+    if (socket || socketRef.current) {
+      const socketToClean = socket || socketRef.current;
+      
+      // Clear all timers
       if (pingInterval.current) {
         clearInterval(pingInterval.current);
         pingInterval.current = null;
       }
       
+      if (heartbeatIntervalRef.current) {
+        clearInterval(heartbeatIntervalRef.current);
+        heartbeatIntervalRef.current = null;
+      }
+      
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+      
+      if (heartbeatTimeoutRef.current) {
+        clearTimeout(heartbeatTimeoutRef.current);
+        heartbeatTimeoutRef.current = null;
+      }
+      
       // Remove all listeners to prevent memory leaks
-      socket.removeAllListeners();
-      socket.disconnect();
+      socketToClean.removeAllListeners();
+      socketToClean.disconnect();
       
       // Reset state
       setSocket(null);
       setIsConnected(false);
+      setConnectionStatus('disconnected');
+      socketRef.current = null;
+      reconnectAttempts.current = 0;
+      setConnectionAttempts(0);
+      isInitializingRef.current = false;
     }
   };
   
-  // Initialize socket when auth token is available
+  // Initialize socket when auth token and astrologer are available
   useEffect(() => {
-    if (userToken) {
-      console.log('SocketContext: User authenticated, initializing socket');
+    if (token && astrologer) {
+      console.log('🚀 [SOCKET] Astrologer authenticated, initializing socket');
       initializeSocket();
     } else {
-      console.log('SocketContext: No user token, cleaning up socket if any');
+      console.log('⚠️ [SOCKET] No astrologer token/data, cleaning up socket if any');
       cleanupSocket();
     }
     
     // Clean up on unmount
     return () => {
-      console.log('SocketContext: Component unmounting, cleaning up');
+      console.log('🧹 [SOCKET] Component unmounting, cleaning up');
       cleanupSocket();
       
-      if (reconnectTimer.current) {
-        clearTimeout(reconnectTimer.current);
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
       }
     };
-  }, [userToken]);
+  }, [token, astrologer]);
   
   // Handle app state changes
   useEffect(() => {
     const handleAppStateChange = (nextAppState) => {
-      console.log('SocketContext: App state changed from', appState.current, 'to', nextAppState);
+      console.log('🔄 [APP_STATE] Changed from', appStateRef.current, 'to', nextAppState);
       
       // App has come to the foreground
       if (
-        appState.current.match(/inactive|background/) && 
+        appStateRef.current.match(/inactive|background/) && 
         nextAppState === 'active' &&
-        userToken
+        token && astrologer
       ) {
-        console.log('SocketContext: App has come to foreground, checking socket connection');
+        console.log('🔄 [APP_STATE] App foreground, checking socket connection');
         
         if (!socket || !isConnected) {
-          console.log('SocketContext: Socket not connected, reinitializing');
+          console.log('🔄 [APP_STATE] Socket not connected, reinitializing');
           initializeSocket();
         }
       }
       
-      appState.current = nextAppState;
+      appStateRef.current = nextAppState;
     };
     
     // Subscribe to app state change events
@@ -333,15 +388,18 @@ export const SocketProvider = ({ children }) => {
     return () => {
       subscription.remove();
     };
-  }, [userToken, socket, isConnected]);
+  }, [token, astrologer, socket, isConnected]);
   
   // Provide context value
   const contextValue = {
     socket,
     isConnected,
     isConnecting,
-    connect: initializeSocket,
-    disconnect: cleanupSocket
+    connectionStatus,
+    connectionAttempts,
+    lastSeen,
+    initializeSocket,
+    cleanupSocket
   };
   
   return (
