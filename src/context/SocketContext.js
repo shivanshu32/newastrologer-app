@@ -38,7 +38,7 @@ const HEARTBEAT_INTERVAL = 30000; // 30 seconds
 const HEARTBEAT_TIMEOUT = 60000; // 60 seconds
 
 export const SocketProvider = ({ children }) => {
-  const { token, astrologer } = useAuth();
+  const { userToken, user } = useAuth();
   const [socket, setSocket] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -74,8 +74,8 @@ export const SocketProvider = ({ children }) => {
   // Initialize or reinitialize socket
   const initializeSocket = async () => {
     // Don't initialize if already connecting or no token/astrologer available
-    if (isConnecting || !token || !astrologer) {
-      console.log('⚠️ [SocketContext] Skipping socket init - connecting:', isConnecting, 'token:', !!token, 'astrologer:', !!astrologer);
+    if (isConnecting || !userToken || !user) {
+      console.log('⚠️ [SocketContext] Skipping socket init - connecting:', isConnecting, 'token:', !!userToken, 'astrologer:', !!user);
       return;
     }
     
@@ -83,16 +83,16 @@ export const SocketProvider = ({ children }) => {
       console.log('🚀 [SocketContext] Initializing socket connection...');
       setIsConnecting(true);
       
-      // Get astrologer ID from the AuthContext astrologer object
-      const astrologerId = astrologer._id || astrologer.id;
+      // Get astrologer ID from the AuthContext user object
+      const astrologerId = user._id || user.id;
       
-      console.log('🔗 [SocketContext] Authentication data - token exists:', !!token, 'astrologerId:', astrologerId);
+      console.log('🔗 [SocketContext] Authentication data - token exists:', !!userToken, 'astrologerId:', astrologerId);
       
       // Store references for reconnection
       astrologerIdRef.current = astrologerId;
-      tokenRef.current = token;
+      tokenRef.current = userToken;
       
-      if (!token || !astrologerId) {
+      if (!userToken || !astrologerId) {
         console.log('SocketContext: No user token, cleaning up socket if any');
         setIsConnecting(false);
         return;
@@ -106,7 +106,7 @@ export const SocketProvider = ({ children }) => {
       // Create new socket connection
       const newSocket = io(SOCKET_SERVER_URL, {
         auth: {
-          token,
+          token: userToken,
           id: astrologerId,
           role: 'astrologer'
         },
@@ -341,7 +341,7 @@ export const SocketProvider = ({ children }) => {
   
   // Initialize socket when auth token and astrologer are available
   useEffect(() => {
-    if (token && astrologer) {
+    if (userToken && user) {
       console.log('🚀 [SOCKET] Astrologer authenticated, initializing socket');
       initializeSocket();
     } else {
@@ -358,7 +358,7 @@ export const SocketProvider = ({ children }) => {
         clearTimeout(reconnectTimeoutRef.current);
       }
     };
-  }, [token, astrologer]);
+  }, [userToken, user]);
   
   // Handle app state changes
   useEffect(() => {
@@ -369,7 +369,7 @@ export const SocketProvider = ({ children }) => {
       if (
         appStateRef.current.match(/inactive|background/) && 
         nextAppState === 'active' &&
-        token && astrologer
+        userToken && user
       ) {
         console.log('🔄 [APP_STATE] App foreground, checking socket connection');
         
@@ -388,7 +388,7 @@ export const SocketProvider = ({ children }) => {
     return () => {
       subscription.remove();
     };
-  }, [token, astrologer, socket, isConnected]);
+  }, [userToken, user, socket, isConnected]);
   
   // Provide context value
   const contextValue = {
