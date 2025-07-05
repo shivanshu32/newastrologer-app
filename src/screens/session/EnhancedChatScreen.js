@@ -25,12 +25,13 @@ const EnhancedChatScreen = ({ route, navigation }) => {
   console.log('🔴 [ASTROLOGER-APP] Route object:', route);
   console.log('🔴 [ASTROLOGER-APP] Route params:', route?.params);
   
-  const { bookingId, astrologerId, sessionId } = route.params || {};
+  const { bookingId, astrologerId, sessionId, bookingDetails: routeBookingDetails } = route.params || {};
   
   console.log('🔴 [ASTROLOGER-APP] Extracted params:');
   console.log('🔴 [ASTROLOGER-APP] - bookingId:', bookingId);
   console.log('🔴 [ASTROLOGER-APP] - astrologerId:', astrologerId);
   console.log('🔴 [ASTROLOGER-APP] - sessionId:', sessionId);
+  console.log('🔴 [ASTROLOGER-APP] - routeBookingDetails:', routeBookingDetails);
   
   // State management
   const [messages, setMessages] = useState([]);
@@ -108,13 +109,27 @@ const EnhancedChatScreen = ({ route, navigation }) => {
     console.log('🔴 [ASTROLOGER-APP] ===== ENHANCED CHAT SCREEN MOUNTED =====');
     console.log('🔴 [ASTROLOGER-APP] Component mounted with params:', { bookingId, astrologerId, sessionId });
     
-    // Fetch booking details on component mount
-    fetchBookingDetails();
+    // Initialize userInfo and bookingDetails from route params first
+    if (routeBookingDetails) {
+      console.log('🔴 [ASTROLOGER-APP] Setting booking details from route params:', routeBookingDetails);
+      setBookingDetails(routeBookingDetails);
+      
+      if (routeBookingDetails.userInfo) {
+        console.log('🔴 [ASTROLOGER-APP] Setting user info from route params:', routeBookingDetails.userInfo);
+        setUserInfo(routeBookingDetails.userInfo);
+      } else {
+        console.log('🔴 [ASTROLOGER-APP] No userInfo found in route booking details');
+      }
+    } else {
+      console.log('🔴 [ASTROLOGER-APP] No booking details in route params, will fetch from API');
+      // Fallback to API fetch if no route params
+      fetchBookingDetails();
+    }
     
     return () => {
       console.log('🔴 [ASTROLOGER-APP] ===== ENHANCED CHAT SCREEN UNMOUNTING =====');
     };
-  }, [fetchBookingDetails]);
+  }, [routeBookingDetails, fetchBookingDetails]);
 
   // Initialize chat connection manager
   useEffect(() => {

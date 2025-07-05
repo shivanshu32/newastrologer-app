@@ -23,6 +23,15 @@ const BookingRequestHandler = () => {
   // Get socket from context and navigation
   const { socket, isConnected } = useSocket();
   const navigation = useNavigation();
+  
+  // Debug state changes
+  useEffect(() => {
+    console.log(' [DEBUG] BookingRequestHandler state changed:');
+    console.log(' [DEBUG] - bookingRequest:', bookingRequest);
+    console.log(' [DEBUG] - isPopupVisible:', isPopupVisible);
+    console.log(' [DEBUG] - loading:', loading);
+    console.log(' [DEBUG] - error:', error);
+  }, [bookingRequest, isPopupVisible, loading, error]);
 
   // Handle incoming booking request
   const handleBookingRequest = useCallback((request) => {
@@ -100,9 +109,15 @@ const BookingRequestHandler = () => {
     console.log(' [DEBUG] Structured booking request:', structuredBookingRequest);
     console.log(' [DEBUG] Booking ID available:', structuredBookingRequest._id);
     
+    console.log(' [DEBUG] About to set booking request state');
+    console.log(' [DEBUG] Current bookingRequest state before update:', bookingRequest);
+    console.log(' [DEBUG] Current isPopupVisible state before update:', isPopupVisible);
+    
     setBookingRequest(structuredBookingRequest);
     setIsPopupVisible(true);
     setError(null); // Clear any previous errors
+    
+    console.log(' [DEBUG] State update calls completed');
   }, []);
 
   // Handle accept booking request using socket event
@@ -379,7 +394,24 @@ const BookingRequestHandler = () => {
       console.log(' [DEBUG] Socket connected:', socket?.connected);
       console.log(' [DEBUG] Event timestamp:', new Date().toISOString());
       console.log(' [DEBUG] Consultation type:', data.consultationType);
-      console.log(' [DEBUG] Booking details:', data.bookingDetails);
+      console.log(' [DEBUG] Booking details from data.bookingDetails:', data.bookingDetails);
+      console.log(' [DEBUG] Available data keys:', Object.keys(data));
+      console.log(' [DEBUG] User info:', data.userInfo);
+      console.log(' [DEBUG] Astrologer ID:', data.astrologerId);
+      
+      // Extract booking details - the data object itself contains the booking info
+      const bookingDetails = data.bookingDetails || {
+        _id: data.bookingId,
+        user: data.user,
+        userInfo: data.userInfo,
+        astrologer: data.astrologerId,
+        type: data.consultationType,
+        sessionId: data.sessionId,
+        roomId: data.roomId,
+        ...data // Include all other fields from the event
+      };
+      
+      console.log(' [DEBUG] Constructed booking details:', bookingDetails);
       
       try {
         // Navigate to appropriate session screen based on consultation type
@@ -390,7 +422,8 @@ const BookingRequestHandler = () => {
             sessionId: data.sessionId,
             roomId: data.roomId,
             consultationType: 'video',
-            bookingDetails: data.bookingDetails
+            astrologerId: data.astrologerId,
+            bookingDetails: bookingDetails
           });
         } else if (data.consultationType === 'voice') {
           console.log(' [DEBUG] Navigating to VoiceCall screen');
@@ -399,17 +432,15 @@ const BookingRequestHandler = () => {
             sessionId: data.sessionId,
             roomId: data.roomId,
             consultationType: 'voice',
-            bookingDetails: data.bookingDetails
+            astrologerId: data.astrologerId,
+            bookingDetails: bookingDetails
           });
         } else if (data.consultationType === 'chat') {
-          console.log(' [DEBUG] Navigating to Chat screen');
-          navigation.navigate('BookingsEnhancedChat', {
-            bookingId: data.bookingId,
-            sessionId: data.sessionId,
-            roomId: data.roomId,
-            consultationType: 'chat',
-            bookingDetails: data.bookingDetails
-          });
+          console.log(' [DEBUG] Chat consultation detected - WaitingRoomScreen will handle navigation');
+          console.log(' [DEBUG] Skipping navigation from BookingRequestHandler to prevent conflict');
+          console.log(' [DEBUG] WaitingRoomScreen has complete booking details with userInfo and astrologerId');
+          // Note: WaitingRoomScreen handles chat navigation with complete booking details
+          // This prevents navigation conflict and ensures userInfo is available
         } else {
           console.error(' [ERROR] Unknown consultation type:', data.consultationType);
           Alert.alert('Error', 'Unknown consultation type: ' + data.consultationType);

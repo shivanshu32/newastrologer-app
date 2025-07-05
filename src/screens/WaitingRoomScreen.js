@@ -123,12 +123,22 @@ const WaitingRoomScreen = () => {
         });
         console.log('✅ [ASTROLOGER-APP] VideoCall navigation initiated successfully');
       } else {
-        console.log('✅ [ASTROLOGER-APP] Navigating to chat consultation');
-        navigation.navigate('BookingsChat', {
-          booking: bookingDetails,
+        console.log('✅ [ASTROLOGER-APP] Navigating to enhanced chat consultation');
+        console.log('✅ [ASTROLOGER-APP] Navigation params with complete booking details:', {
           bookingId: bookingId,
-          roomId: data.roomId,
           sessionId: enhancedBookingDetails.sessionId || bookingDetails?.sessionId || data.sessionId,
+          roomId: data.roomId,
+          consultationType: 'chat',
+          astrologerId: bookingDetails?.astrologer?._id || bookingDetails?.astrologer,
+          bookingDetails: bookingDetails
+        });
+        navigation.navigate('BookingsEnhancedChat', {
+          bookingId: bookingId,
+          sessionId: enhancedBookingDetails.sessionId || bookingDetails?.sessionId || data.sessionId,
+          roomId: data.roomId,
+          consultationType: 'chat',
+          astrologerId: bookingDetails?.astrologer?._id || bookingDetails?.astrologer,
+          bookingDetails: bookingDetails
         });
       }
     };

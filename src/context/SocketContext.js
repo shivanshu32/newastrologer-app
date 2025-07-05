@@ -1,17 +1,31 @@
-import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { AppState } from 'react-native';
 import { io } from 'socket.io-client';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from './AuthContext';
-import { initializeAckHandling } from '../services/socketService';
 
-// Socket server URL - extract base URL from API_URL in api.js
-// Local Development (commented out for production)
-//const SOCKET_SERVER_URL = 'http://192.168.29.107:5000';
+// Socket Server URL Configuration - Comment/Uncomment as needed
+// Local Development
+// const SOCKET_SERVER_URL = 'http://192.168.29.107:5000';
 
-// Production - New backend URL
+// Production
+//const SOCKET_SERVER_URL = 'http://3.110.171.85';
+
 const SOCKET_SERVER_URL = 'https://jyotishcallbackend-2uxrv.ondigitalocean.app';
-// Old production URL: const SOCKET_SERVER_URL = 'http://3.110.171.85';
+
+// Enhanced socket configuration for stability
+const SOCKET_CONFIG = {
+  reconnection: true,
+  reconnectionAttempts: 10,
+  reconnectionDelay: 1000,
+  reconnectionDelayMax: 30000,
+  maxReconnectionAttempts: 10,
+  timeout: 20000,
+  forceNew: false,
+  transports: ['websocket', 'polling'],
+  upgrade: true,
+  rememberUpgrade: true
+};
 
 // Create context
 const SocketContext = createContext(null);
@@ -20,13 +34,25 @@ const SocketContext = createContext(null);
 const PING_INTERVAL = 20000; // 20 seconds
 const RECONNECT_DELAY = 3000; // 3 seconds
 const MAX_RECONNECT_ATTEMPTS = 10;
+const HEARTBEAT_INTERVAL = 30000; // 30 seconds
+const HEARTBEAT_TIMEOUT = 60000; // 60 seconds
 
 export const SocketProvider = ({ children }) => {
-  const { userToken } = useAuth();
+  const { token, astrologer } = useAuth();
   const [socket, setSocket] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
-  const appState = useRef(AppState.currentState);
+  const [connectionAttempts, setConnectionAttempts] = useState(0);
+  const [lastSeen, setLastSeen] = useState(null);
+  const [connectionStatus, setConnectionStatus] = useState('disconnected'); // 'connecting', 'connected', 'disconnected', 'reconnecting'
+  const socketRef = useRef(null);
+  const reconnectTimeoutRef = useRef(null);
+  const heartbeatIntervalRef = useRef(null);
+  const heartbeatTimeoutRef = useRef(null);
+  const appStateRef = useRef(AppState.currentState);
+  const astrologerIdRef = useRef(null);
+  const tokenRef = useRef(null);
+  const isInitializingRef = useRef(false);
   const reconnectAttempts = useRef(0);
   const reconnectTimer = useRef(null);
   const pingInterval = useRef(null);

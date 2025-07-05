@@ -14,6 +14,13 @@ import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 const BookingRequestPopup = ({ visible, bookingRequest, onAccept, onReject, onClose, loading, error }) => {
   const [timeRemaining, setTimeRemaining] = useState(null);
   const [isExpired, setIsExpired] = useState(false);
+  
+  // Debug logging for props
+  console.log(' [DEBUG] BookingRequestPopup render - Props received:');
+  console.log(' [DEBUG] - visible:', visible);
+  console.log(' [DEBUG] - bookingRequest:', bookingRequest);
+  console.log(' [DEBUG] - loading:', loading);
+  console.log(' [DEBUG] - error:', error);
 
   // Calculate time remaining for the booking request
   useEffect(() => {
@@ -83,8 +90,11 @@ const BookingRequestPopup = ({ visible, bookingRequest, onAccept, onReject, onCl
 
   // If no booking request data, don't render anything
   if (!bookingRequest) {
+    console.log(' [DEBUG] BookingRequestPopup: No booking request data, returning null');
     return null;
   }
+  
+  console.log(' [DEBUG] BookingRequestPopup: Rendering popup with booking request:', bookingRequest._id);
 
   const isVideoCall = bookingRequest.type === 'video';
   const isVoiceCall = bookingRequest.type === 'voice';
