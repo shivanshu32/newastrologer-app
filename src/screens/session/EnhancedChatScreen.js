@@ -203,9 +203,11 @@ const EnhancedChatScreen = ({ route, navigation }) => {
     initializeChat();
 
     return () => {
-      if (chatManagerRef.current) {
-        chatManagerRef.current.disconnect();
-      }
+      // Note: We don't disconnect the ChatConnectionManager here to maintain
+      // socket connection for consecutive bookings. The socket should only
+      // disconnect when the astrologer logs out or exits the app completely.
+      console.log('🟡 [ASTROLOGER-APP] EnhancedChatScreen cleanup - keeping socket connected for consecutive bookings');
+      
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }

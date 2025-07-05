@@ -175,22 +175,21 @@ export const SocketProvider = ({ children }) => {
           heartbeatIntervalRef.current = null;
         }
         
-        // Only attempt reconnection for certain disconnect reasons and if we have valid credentials
-        const shouldReconnect = [
-          'transport close',
-          'ping timeout',
-          'transport error',
-          'server disconnect'
-        ].includes(reason) && astrologerIdRef.current && tokenRef.current;
+        // Attempt reconnection for all disconnect reasons except client-initiated disconnects
+        // This ensures astrologer stays connected after session end and other scenarios
+        const isClientDisconnect = reason === 'io client disconnect';
+        const hasValidCredentials = astrologerIdRef.current && tokenRef.current;
         
-        if (shouldReconnect && reconnectAttempts.current < MAX_RECONNECT_ATTEMPTS) {
+        if (!isClientDisconnect && hasValidCredentials && reconnectAttempts.current < MAX_RECONNECT_ATTEMPTS) {
           console.log(`🔄 [SOCKET] Scheduling reconnection for reason: ${reason}`);
           scheduleReconnect();
-        } else if (reason === 'io client disconnect') {
+        } else if (isClientDisconnect) {
           console.log('🔌 [SOCKET] Client initiated disconnect, not reconnecting');
+        } else if (!hasValidCredentials) {
+          console.log('⚠️ [SOCKET] No valid credentials for reconnection');
         } else {
-          console.log(`⚠️ [SOCKET] Not reconnecting for reason: ${reason}`);
-          scheduleReconnect();
+          console.log('❌ [SOCKET] Max reconnection attempts reached');
+          setConnectionStatus('failed');
         }
       });
       
