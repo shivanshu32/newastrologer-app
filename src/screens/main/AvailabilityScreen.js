@@ -1,148 +1,174 @@
 import React, { useState, useEffect } from 'react';
 import {
-  StyleSheet,
   View,
   Text,
+  StyleSheet,
   TouchableOpacity,
-  ScrollView,
   Switch,
   ActivityIndicator,
   Alert,
+  ToastAndroid,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import axios from 'axios';
 import { useAuth } from '../../context/AuthContext';
-
-const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-const TIME_SLOTS = [
-  '09:00 AM - 12:00 PM',
-  '12:00 PM - 03:00 PM',
-  '03:00 PM - 06:00 PM',
-  '06:00 PM - 09:00 PM',
-  '09:00 PM - 12:00 AM',
-];
+import { useSocket } from '../../context/SocketContext';
 
 const AvailabilityScreen = ({ navigation }) => {
+  const { user, userToken } = useAuth();
+  const { socket } = useSocket();
+  const [chatAvailable, setChatAvailable] = useState(false);
+  const [callAvailable, setCallAvailable] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [availability, setAvailability] = useState({});
-  const { user } = useAuth();
+  const [updating, setUpdating] = useState({ chat: false, call: false });
 
   useEffect(() => {
-    fetchAvailability();
+    loadOnlineStatus();
   }, []);
 
-  const fetchAvailability = async () => {
+  const loadOnlineStatus = async () => {
     try {
-      // In a real app, this would call your backend API
-      // const response = await axios.get(`${API_URL}/astrologer/availability`);
-      // setAvailability(response.data);
+      setLoading(true);
       
-      // Simulate API call with dummy data
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // Fetch current online status from backend
+      const response = await axios.get(
+        'http://localhost:5000/api/v1/astrologers/profile',
+        {
+          headers: { Authorization: `Bearer ${userToken}` }
+        }
+      );
       
-      // Generate dummy availability data
-      const dummyAvailability = {};
-      DAYS.forEach(day => {
-        dummyAvailability[day] = {};
-        TIME_SLOTS.forEach(slot => {
-          // Randomly set some slots as available
-          dummyAvailability[day][slot] = Math.random() > 0.5;
-        });
-      });
-      
-      setAvailability(dummyAvailability);
-      setLoading(false);
+      if (response.data.success && response.data.astrologer.onlineStatus) {
+        const { chat, call } = response.data.astrologer.onlineStatus;
+        setChatAvailable(chat === 1);
+        setCallAvailable(call === 1);
+      } else {
+        // Default to offline if no onlineStatus found
+        setChatAvailable(false);
+        setCallAvailable(false);
+      }
     } catch (error) {
-      console.log('Error fetching availability:', error);
+      console.error('Error loading online status:', error);
+      showToast('Failed to load availability status');
+      // Set defaults on error
+      setChatAvailable(false);
+      setCallAvailable(false);
+    } finally {
       setLoading(false);
-      Alert.alert('Error', 'Failed to load availability data. Please try again.');
     }
   };
 
-  const handleToggleSlot = (day, slot) => {
-    setAvailability(prev => ({
-      ...prev,
-      [day]: {
-        ...prev[day],
-        [slot]: !prev[day][slot],
-      },
-    }));
-  };
-
-  const handleToggleDay = (day) => {
-    const isAllAvailable = Object.values(availability[day]).every(Boolean);
-    
-    setAvailability(prev => ({
-      ...prev,
-      [day]: Object.keys(prev[day]).reduce((acc, slot) => {
-        acc[slot] = !isAllAvailable;
-        return acc;
-      }, {}),
-    }));
-  };
-
-  const handleSaveAvailability = async () => {
-    try {
-      setSaving(true);
-      
-      // In a real app, this would call your backend API
-      // await axios.post(`${API_URL}/astrologer/availability`, availability);
-      
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
-      
-      setSaving(false);
-      Alert.alert('Success', 'Your availability has been updated successfully.');
-    } catch (error) {
-      console.log('Error saving availability:', error);
-      setSaving(false);
-      Alert.alert('Error', 'Failed to save availability. Please try again.');
+  const showToast = (message) => {
+    if (Platform.OS === 'android') {
+      ToastAndroid.show(message, ToastAndroid.SHORT);
+    } else {
+      Alert.alert('Info', message);
     }
   };
 
-  const isDayAvailable = (day) => {
-    return Object.values(availability[day] || {}).some(Boolean);
-  };
-
-  const renderTimeSlot = (day, slot) => {
-    const isAvailable = availability[day]?.[slot] || false;
-    
-    return (
-      <View key={slot} style={styles.slotContainer}>
-        <Text style={styles.slotText}>{slot}</Text>
-        <Switch
-          value={isAvailable}
-          onValueChange={() => handleToggleSlot(day, slot)}
-          trackColor={{ false: '#ccc', true: '#8A2BE2' }}
-          thumbColor="#fff"
-        />
-      </View>
-    );
-  };
-
-  const renderDay = (day) => {
-    return (
-      <View key={day} style={styles.dayContainer}>
-        <View style={styles.dayHeader}>
-          <Text style={styles.dayTitle}>{day}</Text>
-          <TouchableOpacity
-            style={[
-              styles.toggleButton,
-              isDayAvailable(day) ? styles.toggleButtonActive : {},
-            ]}
-            onPress={() => handleToggleDay(day)}
-          >
-            <Text style={[
-              styles.toggleButtonText,
-              isDayAvailable(day) ? styles.toggleButtonTextActive : {},
-            ]}>
-              {isDayAvailable(day) ? 'Available' : 'Unavailable'}
-            </Text>
-          </TouchableOpacity>
-        </View>
+  const updateAvailabilityStatus = async (type, value) => {
+    try {
+      setUpdating(prev => ({ ...prev, [type]: true }));
+      
+      // Optimistically update UI
+      if (type === 'chat') {
+        setChatAvailable(value);
+      } else {
+        setCallAvailable(value);
+      }
+      
+      // Prepare the onlineStatus object
+      const onlineStatus = {
+        chat: type === 'chat' ? (value ? 1 : 0) : (chatAvailable ? 1 : 0),
+        call: type === 'call' ? (value ? 1 : 0) : (callAvailable ? 1 : 0)
+      };
+      
+      // Update backend via API
+      const response = await axios.put(
+        'http://localhost:5000/api/v1/astrologers/update-online-status',
+        { onlineStatus },
+        {
+          headers: { Authorization: `Bearer ${userToken}` }
+        }
+      );
+      
+      if (response.data.success) {
+        // Emit socket event for real-time sync
+        if (socket && socket.connected) {
+          socket.emit('astrologer_availability_updated', {
+            astrologerId: user.id,
+            onlineStatus
+          });
+        }
         
-        <View style={styles.slotsContainer}>
-          {TIME_SLOTS.map(slot => renderTimeSlot(day, slot))}
+        // Show success toast
+        const statusText = value ? 'enabled' : 'disabled';
+        const serviceText = type === 'chat' ? 'Chat' : 'Call';
+        showToast(`${serviceText} availability ${statusText}`);
+      } else {
+        throw new Error(response.data.message || 'Failed to update status');
+      }
+    } catch (error) {
+      console.error(`Error updating ${type} availability:`, error);
+      
+      // Revert optimistic update on error
+      if (type === 'chat') {
+        setChatAvailable(!value);
+      } else {
+        setCallAvailable(!value);
+      }
+      
+      showToast(`Failed to update ${type} availability`);
+    } finally {
+      setUpdating(prev => ({ ...prev, [type]: false }));
+    }
+  };
+
+  const handleChatToggle = (value) => {
+    if (updating.chat) return; // Prevent rapid toggling
+    updateAvailabilityStatus('chat', value);
+  };
+
+  const handleCallToggle = (value) => {
+    if (updating.call) return; // Prevent rapid toggling
+    updateAvailabilityStatus('call', value);
+  };
+
+  const renderAvailabilityToggle = (type, title, description, value, onToggle, isUpdating) => {
+    return (
+      <View style={styles.toggleContainer}>
+        <View style={styles.toggleHeader}>
+          <View style={styles.toggleInfo}>
+            <Text style={styles.toggleTitle}>{title}</Text>
+            <Text style={styles.toggleDescription}>{description}</Text>
+          </View>
+          <View style={styles.toggleSwitchContainer}>
+            {isUpdating ? (
+              <ActivityIndicator size="small" color="#8A2BE2" style={styles.toggleLoader} />
+            ) : (
+              <Switch
+                value={value}
+                onValueChange={onToggle}
+                trackColor={{ false: '#E5E5E5', true: '#8A2BE2' }}
+                thumbColor={value ? '#FFFFFF' : '#FFFFFF'}
+                ios_backgroundColor="#E5E5E5"
+                disabled={isUpdating}
+              />
+            )}
+          </View>
+        </View>
+        <View style={styles.toggleStatus}>
+          <View style={[
+            styles.statusIndicator,
+            { backgroundColor: value ? '#4CAF50' : '#F44336' }
+          ]} />
+          <Text style={[
+            styles.statusText,
+            { color: value ? '#4CAF50' : '#F44336' }
+          ]}>
+            {value ? 'Available' : 'Unavailable'}
+          </Text>
         </View>
       </View>
     );
@@ -166,31 +192,44 @@ const AvailabilityScreen = ({ navigation }) => {
           <Text style={styles.loadingText}>Loading availability...</Text>
         </View>
       ) : (
-        <>
-          <ScrollView style={styles.content}>
-            <Text style={styles.subtitle}>
-              Set your weekly availability for consultations
-            </Text>
-            
-            {DAYS.map(day => renderDay(day))}
-            
-            <View style={styles.spacer} />
-          </ScrollView>
+        <View style={styles.content}>
+          <Text style={styles.subtitle}>
+            Control your availability for consultations in real-time
+          </Text>
           
-          <View style={styles.footer}>
-            <TouchableOpacity
-              style={styles.saveButton}
-              onPress={handleSaveAvailability}
-              disabled={saving}
-            >
-              {saving ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.saveButtonText}>Save Availability</Text>
-              )}
-            </TouchableOpacity>
+          <View style={styles.togglesContainer}>
+            {renderAvailabilityToggle(
+              'chat',
+              'Chat Consultations',
+              'Accept text-based consultation requests',
+              chatAvailable,
+              handleChatToggle,
+              updating.chat
+            )}
+            
+            {renderAvailabilityToggle(
+              'call',
+              'Voice/Video Calls',
+              'Accept voice and video call requests',
+              callAvailable,
+              handleCallToggle,
+              updating.call
+            )}
           </View>
-        </>
+          
+          <View style={styles.infoContainer}>
+            <View style={styles.infoHeader}>
+              <Ionicons name="information-circle" size={20} color="#8A2BE2" />
+              <Text style={styles.infoTitle}>How it works</Text>
+            </View>
+            <Text style={styles.infoText}>
+              • Toggle availability in real-time{"\n"}
+              • Users see your status instantly{"\n"}
+              • Only available services show booking options{"\n"}
+              • Changes sync across all devices
+            </Text>
+          </View>
+        </View>
       )}
     </View>
   );
@@ -234,87 +273,88 @@ const styles = StyleSheet.create({
   subtitle: {
     fontSize: 16,
     color: '#666',
-    marginBottom: 20,
+    marginBottom: 30,
+    textAlign: 'center',
   },
-  dayContainer: {
+  togglesContainer: {
+    marginBottom: 30,
+  },
+  toggleContainer: {
     backgroundColor: '#fff',
-    borderRadius: 10,
-    marginBottom: 15,
-    padding: 15,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  dayHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 15,
-    paddingBottom: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  dayTitle: {
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  toggleButton: {
-    paddingVertical: 5,
-    paddingHorizontal: 10,
-    borderRadius: 15,
-    backgroundColor: '#f0f0f0',
-  },
-  toggleButtonActive: {
-    backgroundColor: '#e6fff0',
-  },
-  toggleButtonText: {
-    fontSize: 12,
-    color: '#666',
-  },
-  toggleButtonTextActive: {
-    color: '#00a854',
-    fontWeight: 'bold',
-  },
-  slotsContainer: {
-    marginLeft: 10,
-  },
-  slotContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-  },
-  slotText: {
-    fontSize: 14,
-    color: '#333',
-  },
-  spacer: {
-    height: 80,
-  },
-  footer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
+    borderRadius: 12,
     padding: 20,
-    backgroundColor: '#fff',
-    borderTopWidth: 1,
-    borderTopColor: '#eee',
+    marginBottom: 15,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  saveButton: {
-    backgroundColor: '#8A2BE2',
-    paddingVertical: 15,
-    borderRadius: 8,
+  toggleHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  toggleInfo: {
+    flex: 1,
+    marginRight: 15,
+  },
+  toggleTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 4,
+  },
+  toggleDescription: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 20,
+  },
+  toggleSwitchContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toggleLoader: {
+    width: 51,
+    height: 31,
+  },
+  toggleStatus: {
+    flexDirection: 'row',
     alignItems: 'center',
   },
-  saveButtonText: {
-    color: '#fff',
+  statusIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 8,
+  },
+  statusText: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  infoContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    borderLeftWidth: 4,
+    borderLeftColor: '#8A2BE2',
+  },
+  infoHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  infoTitle: {
     fontSize: 16,
     fontWeight: 'bold',
+    color: '#8A2BE2',
+    marginLeft: 8,
+  },
+  infoText: {
+    fontSize: 14,
+    color: '#666',
+    lineHeight: 22,
   },
 });
 
