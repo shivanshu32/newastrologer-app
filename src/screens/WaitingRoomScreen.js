@@ -183,6 +183,44 @@ const WaitingRoomScreen = () => {
       // Handle any direct notifications here if needed
     };
 
+    // Handle booking cancellation by user
+    const bookingCancelledHandler = (data) => {
+      console.log('🚫 [ASTROLOGER-APP] Booking cancelled by user:', data);
+      
+      // Check if this cancellation is for the current booking
+      if (data && data.bookingId === bookingId) {
+        console.log('✅ [ASTROLOGER-APP] Booking cancellation matches current booking, handling...');
+        
+        // Prevent multiple navigations
+        if (hasNavigated.current) {
+          console.log('⚠️ [ASTROLOGER-APP] Navigation already occurred, ignoring booking cancellation');
+          return;
+        }
+        
+        // Set navigation guard immediately
+        hasNavigated.current = true;
+        console.log('🔒 [ASTROLOGER-APP] Navigation guard set for booking cancellation');
+        
+        // Show alert and redirect to home screen
+        Alert.alert(
+          'Booking Cancelled',
+          data.message || 'The user has cancelled this booking request.',
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                console.log('✅ [ASTROLOGER-APP] Navigating to Home after booking cancellation');
+                navigation.navigate('Home');
+              }
+            }
+          ],
+          { cancelable: false } // Prevent dismissing without action
+        );
+      } else {
+        console.log('❌ [ASTROLOGER-APP] Booking cancellation bookingId mismatch, ignoring event');
+      }
+    };
+
     // Handle Exotel voice call events
     const voiceCallInitiatedHandler = (data) => {
       console.log('📞 [ASTROLOGER-APP] Voice call initiated:', data);
@@ -215,6 +253,7 @@ const WaitingRoomScreen = () => {
     socket.on('user_joined_consultation', userJoinedHandler);
     socket.on('join_consultation', joinConsultationHandler);
     socket.on('direct_notification', directNotificationHandler);
+    socket.on('booking_cancelled', bookingCancelledHandler);
     socket.on('voice_call_initiated', voiceCallInitiatedHandler);
     socket.on('voice_call_failed', voiceCallFailedHandler);
 
@@ -224,6 +263,7 @@ const WaitingRoomScreen = () => {
       socket.off('user_joined_consultation', userJoinedHandler);
       socket.off('join_consultation', joinConsultationHandler);
       socket.off('direct_notification', directNotificationHandler);
+      socket.off('booking_cancelled', bookingCancelledHandler);
       socket.off('voice_call_initiated', voiceCallInitiatedHandler);
       socket.off('voice_call_failed', voiceCallFailedHandler);
       
