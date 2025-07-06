@@ -15,7 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Sentry from '@sentry/react-native';
 import { useAuth } from '../../context/AuthContext';
 import { bookingsAPI, walletAPI, sessionsAPI } from '../../services/api';
-import { respondToBookingRequest } from '../../services/socketService';
+import { respondToBookingRequest, getPendingBookings, listenForPendingBookingUpdates } from '../../services/socketService';
 import { SocketContext } from '../../context/SocketContext';
 import { useFocusEffect } from '@react-navigation/native';
 
@@ -59,9 +59,21 @@ const HomeScreen = ({ navigation }) => {
     // This prevents conflicts and ACK timeout issues from duplicate event listeners
     console.log('HomeScreen useEffect - BookingRequestHandler handles booking requests globally');
     
-    // No cleanup needed since we're not setting up any listeners here
+    // Set up real-time listener for pending booking updates
+    if (socket && isConnected) {
+      console.log('🏠 [HOME] Setting up real-time pending booking updates listener');
+      
+      const cleanupPendingUpdates = listenForPendingBookingUpdates(socket, (updatedPendingBookings) => {
+        console.log('🏠 [HOME] Received pending bookings update:', updatedPendingBookings);
+        // Re-fetch and process the updated pending bookings
+        fetchPendingBookings();
+      });
+      
+      return cleanupPendingUpdates;
+    }
+    
     return () => {
-      // No cleanup needed
+      // No cleanup needed when socket not connected
     };
   }, [socket, isConnected]);
   
@@ -77,22 +89,44 @@ const HomeScreen = ({ navigation }) => {
     try {
       setLoading(true);
       
-      // Fetch both pending bookings and active sessions in parallel
-      const [bookingsResponse, sessionsResponse] = await Promise.all([
-        bookingsAPI.getAll('pending'),
-        sessionsAPI.getActive()
-      ]);
+      // Fetch real-time pending bookings from pendingBookingMap via socket
+      let realTimePendingBookings = [];
+      if (socket && isConnected) {
+        try {
+          console.log('🏠 [HOME] Fetching pending bookings from pendingBookingMap...');
+          realTimePendingBookings = await getPendingBookings(socket);
+          console.log('🏠 [HOME] Received pending bookings:', realTimePendingBookings);
+        } catch (error) {
+          console.error('🏠 [HOME] Failed to fetch pending bookings:', error);
+          realTimePendingBookings = [];
+        }
+      } else {
+        console.log('🏠 [HOME] Socket not connected, skipping pending bookings fetch');
+      }
+      
+      // Fetch active sessions
+      const sessionsResponse = await sessionsAPI.getActive();
       
       let chatItems = [];
       
-      // Process pending bookings - ONLY CHAT consultations with refined logic
-      if (bookingsResponse.data && bookingsResponse.data.data && Array.isArray(bookingsResponse.data.data)) {
-        const chatBookings = bookingsResponse.data.data
+      // Process real-time pending bookings - ONLY CHAT consultations with refined logic
+      if (realTimePendingBookings && Array.isArray(realTimePendingBookings)) {
+        const chatBookings = realTimePendingBookings
           .filter(booking => {
-            // ONLY include chat bookings with specific statuses
-            if (!booking || booking.type !== 'chat') return false;
+            // Filter out invalid bookings and only show relevant statuses
+            if (!booking || !booking.status) return false;
             
-            // Two categories:
+            // Filter out expired bookings (client-side backup)
+            if (booking.expiresAt) {
+              const now = new Date();
+              const expiresAt = new Date(booking.expiresAt);
+              if (expiresAt <= now) {
+                console.log(`🏠 [HOME] Filtering out expired booking: ${booking.bookingId || booking._id}`);
+                return false;
+              }
+            }
+            
+            // Only show bookings that are:
             // 1. User-initiated awaiting astrologer response: 'confirmed', 'pending'
             // 2. Astrologer accepted ongoing: 'accepted'
             const validStatuses = ['pending', 'confirmed', 'accepted'];
@@ -107,7 +141,7 @@ const HomeScreen = ({ navigation }) => {
               const isAcceptedChat = booking.status === 'accepted';
               
               return {
-                id: booking._id || `temp-${Date.now()}`,
+                id: booking.bookingId || booking._id || `temp-${Date.now()}`,
                 userId: (booking.user && booking.user._id) || 'unknown',
                 userName: (booking.user && booking.user.name) || 'User',
                 userImage: 'https://freesvg.org/img/abstract-user-flat-4.png',
@@ -205,69 +239,148 @@ const HomeScreen = ({ navigation }) => {
   };
 
   const handleAcceptBooking = async (booking) => {
+    console.log('🏠 [HOME] Accepting booking request:', booking.id);
+    console.log('🏠 [HOME] Booking details:', booking);
+    
+    if (!socket) {
+      console.error('🏠 [HOME] Socket is not available');
+      Alert.alert('Error', 'Connection not available. Please try again.');
+      return;
+    }
+
+    if (!socket.connected) {
+      console.error('🏠 [HOME] Socket is not connected');
+      Alert.alert('Error', 'Connection lost. Please try again.');
+      return;
+    }
+
+    if (!booking?.id) {
+      console.error('🏠 [HOME] No booking ID available');
+      Alert.alert('Error', 'Invalid booking request.');
+      return;
+    }
+
     try {
       setLoading(true);
+      console.log('🏠 [HOME] About to emit booking_response event');
+      console.log('🏠 [HOME] Payload:', { bookingId: booking.id, status: 'accepted' });
       
-      // Call the API to accept the booking
-      await bookingsAPI.accept(booking.id);
-      
-      // If socket is available, also respond via socket for real-time updates
-      if (socket) {
-        try {
-          await respondToBookingRequest(socket, booking.id, true);
-        } catch (socketError) {
-          console.log('Socket error when accepting booking:', socketError);
-          // Continue even if socket fails, as we've already updated via API
+      socket.emit('booking_response', 
+        { bookingId: booking.id, status: 'accepted' },
+        (response) => {
+          console.log('🏠 [HOME] booking_response callback received:', response);
+          setLoading(false);
+          
+          if (response?.success) {
+            console.log('🏠 [HOME] Booking accepted successfully');
+            
+            // Remove the booking from the list
+            setPendingBookings(prevBookings => 
+              prevBookings.filter(item => item.id !== booking.id)
+            );
+            
+            // Handle different consultation types - use same logic as popup
+            const consultationType = booking.type;
+            console.log('🏠 [HOME] Consultation type:', consultationType);
+            
+            if (consultationType === 'voice') {
+              // For voice consultations, Exotel call should be triggered automatically by backend
+              console.log('🏠 [HOME] Voice consultation accepted - Exotel call should be triggered by backend');
+              Alert.alert(
+                'Voice Call Accepted', 
+                'The voice consultation has been accepted. The call will be initiated shortly via Exotel. Please wait for the incoming call.',
+                [{ text: 'OK' }]
+              );
+              
+              // Stay on Home for voice calls
+              console.log('🏠 [HOME] Staying on Home for voice consultation');
+              
+            } else {
+              // For chat and video consultations, use the WaitingRoom flow
+              console.log('🏠 [HOME] Non-voice consultation - navigating to WaitingRoom');
+              try {
+                navigation.navigate('Bookings', {
+                  screen: 'WaitingRoom',
+                  params: { 
+                    bookingId: booking.id,
+                    bookingDetails: booking 
+                  }
+                });
+                console.log('🏠 [HOME] Navigation to WaitingRoom successful');
+              } catch (navError) {
+                console.error('🏠 [HOME] Navigation failed:', navError);
+                Alert.alert('Navigation Error', 'Failed to navigate to waiting room: ' + navError.message);
+              }
+            }
+          } else {
+            console.error('🏠 [HOME] Backend rejected acceptance:', response);
+            Alert.alert('Error', 'Failed to accept booking. Please try again.');
+          }
         }
-      }
-      
-      // Remove the booking from the list
-      setPendingBookings(prevBookings => 
-        prevBookings.filter(item => item.id !== booking.id)
       );
       
-      setLoading(false);
+      console.log('🏠 [HOME] booking_response event emitted successfully');
       
-      // Navigate to the appropriate screen based on booking type
-      if (booking.type === 'chat') {
-        navigation.navigate('HomeChat', { bookingId: booking.id });
-      } else if (booking.type === 'video') {
-        navigation.navigate('HomeVideoCall', { bookingId: booking.id });
-      } else if (booking.type === 'voice') {
-        navigation.navigate('HomeVoiceCall', { bookingId: booking.id });
-      }
     } catch (error) {
-      console.log('Error accepting booking:', error);
+      console.error('🏠 [HOME] Exception in handleAcceptBooking:', error);
       setLoading(false);
       Alert.alert('Error', 'Failed to accept booking. Please try again.');
     }
   };
 
   const handleRejectBooking = async (booking) => {
+    console.log('🏠 [HOME] Rejecting booking request:', booking.id);
+    console.log('🏠 [HOME] Booking details:', booking);
+    
+    if (!socket) {
+      console.error('🏠 [HOME] Socket is not available');
+      Alert.alert('Error', 'Connection not available. Please try again.');
+      return;
+    }
+
+    if (!socket.connected) {
+      console.error('🏠 [HOME] Socket is not connected');
+      Alert.alert('Error', 'Connection lost. Please try again.');
+      return;
+    }
+
+    if (!booking?.id) {
+      console.error('🏠 [HOME] No booking ID available');
+      Alert.alert('Error', 'Invalid booking request.');
+      return;
+    }
+
     try {
       setLoading(true);
+      console.log('🏠 [HOME] About to emit booking_response event for rejection');
+      console.log('🏠 [HOME] Payload:', { bookingId: booking.id, status: 'rejected' });
       
-      // Call the API to reject the booking
-      await bookingsAPI.reject(booking.id);
-      
-      // If socket is available, also respond via socket for real-time updates
-      if (socket) {
-        try {
-          await respondToBookingRequest(socket, booking.id, false);
-        } catch (socketError) {
-          console.log('Socket error when rejecting booking:', socketError);
-          // Continue even if socket fails, as we've already updated via API
+      socket.emit('booking_response', 
+        { bookingId: booking.id, status: 'rejected' },
+        (response) => {
+          console.log('🏠 [HOME] booking_response callback received for rejection:', response);
+          setLoading(false);
+          
+          if (response?.success) {
+            console.log('🏠 [HOME] Booking rejected successfully');
+            
+            // Remove the booking from the list
+            setPendingBookings(prevBookings => 
+              prevBookings.filter(item => item.id !== booking.id)
+            );
+            
+            console.log('🏠 [HOME] Booking removed from pending list');
+          } else {
+            console.error('🏠 [HOME] Backend rejected the rejection:', response);
+            Alert.alert('Error', 'Failed to reject booking. Please try again.');
+          }
         }
-      }
-      
-      // Remove the booking from the list
-      setPendingBookings(prevBookings => 
-        prevBookings.filter(item => item.id !== booking.id)
       );
       
-      setLoading(false);
+      console.log('🏠 [HOME] booking_response event emitted successfully for rejection');
+      
     } catch (error) {
-      console.log('Error rejecting booking:', error);
+      console.error('🏠 [HOME] Exception in handleRejectBooking:', error);
       setLoading(false);
       Alert.alert('Error', 'Failed to reject booking. Please try again.');
     }
@@ -298,11 +411,12 @@ const HomeScreen = ({ navigation }) => {
       switch (item.displayState) {
         case 'awaiting_response':
           return {
-            badge: 'WAITING',
+            badge: 'PENDING',
             badgeColor: '#FF9800',
             contextLabel: 'User is waiting for your response',
             timeLabel: `Requested ${elapsedMinutes} min ago`,
-            showActions: false // No accept/decline buttons for passive display
+            showActions: true,
+            actionType: 'accept_reject' // Show Accept/Reject buttons
           };
         case 'accepted_chat':
           return {
@@ -417,7 +531,32 @@ const HomeScreen = ({ navigation }) => {
         {/* Refined action buttons based on display state */}
         <View style={styles.actionButtons}>
           {displayContext.showActions ? (
-            displayContext.actionType === 'join' || displayContext.actionType === 'rejoin' ? (
+            displayContext.actionType === 'accept_reject' ? (
+              // Accept and Reject buttons for pending booking requests
+              <View style={styles.acceptRejectContainer}>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.rejectButton]}
+                  onPress={() => {
+                    console.log('Rejecting booking request:', item.id);
+                    handleRejectBooking(item);
+                  }}
+                >
+                  <Ionicons name="close-circle" size={18} color="#fff" />
+                  <Text style={styles.rejectButtonText}>Reject</Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.acceptButton]}
+                  onPress={() => {
+                    console.log('Accepting booking request:', item.id);
+                    handleAcceptBooking(item);
+                  }}
+                >
+                  <Ionicons name="checkmark-circle" size={18} color="#fff" />
+                  <Text style={styles.acceptButtonText}>Accept</Text>
+                </TouchableOpacity>
+              </View>
+            ) : displayContext.actionType === 'join' || displayContext.actionType === 'rejoin' ? (
               <TouchableOpacity
                 style={[styles.actionButton, styles.joinButton]}
                 onPress={() => {
@@ -438,7 +577,7 @@ const HomeScreen = ({ navigation }) => {
               </TouchableOpacity>
             ) : null
           ) : (
-            // Passive display for awaiting response - no action buttons
+            // Passive display - no action buttons
             <View style={styles.passiveInfo}>
               <Ionicons name="information-circle-outline" size={16} color="#666" />
               <Text style={styles.passiveText}>
@@ -770,6 +909,11 @@ const styles = StyleSheet.create({
   actionButtons: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+  },
+  acceptRejectContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    width: '100%',
   },
   actionButton: {
     flex: 1,

@@ -114,18 +114,27 @@ const BookingRequestPopup = ({ visible, bookingRequest, onAccept, onReject, onCl
               <Ionicons name="notifications" size={24} color="#4CAF50" />
               <Text style={styles.headerText}>New Booking Request</Text>
             </View>
-            {timeRemaining && !isExpired && (
-              <View style={styles.timerContainer}>
-                <Ionicons name="time-outline" size={16} color="#FF9800" />
-                <Text style={styles.timerText}>{timeRemaining}</Text>
-              </View>
-            )}
-            {isExpired && (
-              <View style={styles.expiredContainer}>
-                <Ionicons name="time-outline" size={16} color="#FF6B6B" />
-                <Text style={styles.expiredText}>Expired</Text>
-              </View>
-            )}
+            <View style={styles.headerRight}>
+              {timeRemaining && !isExpired && (
+                <View style={styles.timerContainer}>
+                  <Ionicons name="time-outline" size={16} color="#FF9800" />
+                  <Text style={styles.timerText}>{timeRemaining}</Text>
+                </View>
+              )}
+              {isExpired && (
+                <View style={styles.expiredContainer}>
+                  <Ionicons name="time-outline" size={16} color="#FF6B6B" />
+                  <Text style={styles.expiredText}>Expired</Text>
+                </View>
+              )}
+              <TouchableOpacity
+                style={styles.closeButton}
+                onPress={() => onClose && onClose()}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
           </View>
 
           {error && (
@@ -293,6 +302,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
+  },
+  headerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  closeButton: {
+    padding: 4,
+    borderRadius: 20,
+    backgroundColor: 'transparent',
   },
   headerText: {
     fontSize: 18,

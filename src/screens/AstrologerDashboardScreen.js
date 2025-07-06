@@ -5,16 +5,18 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
-  Switch,
-  ActivityIndicator
+  Alert,
+  RefreshControl,
+  ActivityIndicator,
+  Switch
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import axios from 'axios';
-import { API_URL } from '../services/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import BookingRequestHandler from '../components/BookingRequestHandler';
-import { getVectorIconsImport } from '../config/expoConfig';
 import { useSocket } from '../context/SocketContext';
+import BookingRequestHandler from '../components/BookingRequestHandler';
+import { getPendingBookings, listenForPendingBookingUpdates } from '../services/socketService';
+import { getVectorIconsImport } from '../config/expoConfig';
 
 // Conditional import for Expo Go compatibility
 const Icon = getVectorIconsImport('MaterialIcons');
@@ -31,6 +33,7 @@ const AstrologerDashboardScreen = () => {
   const [astrologer, setAstrologer] = useState(null);
   const [isOnline, setIsOnline] = useState(false);
   const [upcomingBookings, setUpcomingBookings] = useState([]);
+  const [pendingBookings, setPendingBookings] = useState([]);
   const [todayEarnings, setTodayEarnings] = useState(0);
   const [weeklyEarnings, setWeeklyEarnings] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -53,11 +56,25 @@ const AstrologerDashboardScreen = () => {
         setAstrologer(profileResponse.data);
         setIsOnline(profileResponse.data.status === 'online');
         
-        // Fetch upcoming bookings
-        const bookingsResponse = await axios.get(`${API_URL}/api/astrologers/${astrologerId}/bookings`, {
-          params: { status: 'accepted,pending', sort: 'scheduledAt' }
-        });
-        setUpcomingBookings(bookingsResponse.data.slice(0, 5)); // Get first 5 bookings
+        // Fetch real-time pending bookings from pendingBookingMap via socket
+        if (socket && isConnected) {
+          try {
+            console.log('📋 [DASHBOARD] Fetching pending bookings from pendingBookingMap...');
+            const realTimePendingBookings = await getPendingBookings(socket);
+            console.log('📋 [DASHBOARD] Received pending bookings:', realTimePendingBookings);
+            setPendingBookings(realTimePendingBookings);
+            // Use pending bookings as upcoming bookings for now
+            setUpcomingBookings(realTimePendingBookings.slice(0, 5));
+          } catch (error) {
+            console.error('📋 [DASHBOARD] Failed to fetch pending bookings:', error);
+            setPendingBookings([]);
+            setUpcomingBookings([]);
+          }
+        } else {
+          console.log('📋 [DASHBOARD] Socket not connected, skipping pending bookings fetch');
+          setPendingBookings([]);
+          setUpcomingBookings([]);
+        }
         
         // Fetch earnings stats
         const earningsResponse = await axios.get(`${API_URL}/api/astrologers/${astrologerId}/earnings`);
@@ -78,6 +95,26 @@ const AstrologerDashboardScreen = () => {
     
     return () => clearInterval(refreshInterval);
   }, []);
+  
+  // Set up real-time listener for pending booking updates
+  useEffect(() => {
+    if (!socket || !isConnected) {
+      console.log('📋 [DASHBOARD] Socket not connected, skipping pending booking updates listener');
+      return;
+    }
+    
+    console.log('📋 [DASHBOARD] Setting up real-time pending booking updates listener');
+    
+    // Set up listener for pending booking updates
+    const cleanupPendingUpdates = listenForPendingBookingUpdates(socket, (updatedPendingBookings) => {
+      console.log('📋 [DASHBOARD] Received pending bookings update:', updatedPendingBookings);
+      setPendingBookings(updatedPendingBookings);
+      // Update upcoming bookings display with latest pending bookings
+      setUpcomingBookings(updatedPendingBookings.slice(0, 5));
+    });
+    
+    return cleanupPendingUpdates;
+  }, [socket, isConnected]);
 
   // Toggle online status
   const toggleOnlineStatus = async () => {
