@@ -470,6 +470,65 @@ export const initializeAckHandling = (socket) => {
   }
 };
 
+/**
+ * Get current pending bookings for the astrologer
+ * @param {Object} socket - Socket.io instance
+ * @returns {Promise<Array>} - Promise that resolves with pending bookings array
+ */
+export const getPendingBookings = async (socket) => {
+  if (!socket || !socket.connected) {
+    return Promise.reject(new Error('Socket not connected'));
+  }
+  
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error('Get pending bookings timeout'));
+    }, RESPONSE_TIMEOUT);
+    
+    socket.emit('get_pending_bookings', {}, (response) => {
+      clearTimeout(timeout);
+      
+      if (response && response.success) {
+        resolve(response.pendingBookings || []);
+      } else {
+        console.error('Get pending bookings error:', response);
+        reject(new Error(response ? response.message : 'Failed to get pending bookings'));
+      }
+    });
+  });
+};
+
+/**
+ * Listen for real-time pending booking updates
+ * @param {Object} socket - Socket.io instance
+ * @param {Function} onPendingBookingsUpdated - Callback for pending bookings updates
+ * @returns {Function} - Cleanup function to remove listener
+ */
+export const listenForPendingBookingUpdates = (socket, onPendingBookingsUpdated) => {
+  if (!socket) {
+    console.warn('Socket not available for pending booking updates listener');
+    return () => {};
+  }
+  
+  const handlePendingBookingsUpdated = (data) => {
+    console.log('📋 [SOCKET] Received pending bookings update:', data);
+    if (onPendingBookingsUpdated && typeof onPendingBookingsUpdated === 'function') {
+      onPendingBookingsUpdated(data.pendingBookings || []);
+    }
+  };
+  
+  // Listen for pending bookings updates
+  socket.on('pending_bookings_updated', handlePendingBookingsUpdated);
+  
+  console.log('📋 [SOCKET] Listening for pending booking updates');
+  
+  // Return cleanup function
+  return () => {
+    socket.off('pending_bookings_updated', handlePendingBookingsUpdated);
+    console.log('📋 [SOCKET] Stopped listening for pending booking updates');
+  };
+};
+
 // Export all functions as a default object for convenience
 export default {
   respondToBookingRequest,
@@ -486,5 +545,7 @@ export default {
   markMessageAsRead,
   listenForMessageStatusUpdates,
   setupAckHandler,
-  initializeAckHandling
+  initializeAckHandling,
+  getPendingBookings,
+  listenForPendingBookingUpdates
 };

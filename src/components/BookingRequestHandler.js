@@ -4,6 +4,7 @@ import { useSocket } from '../context/SocketContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import BookingRequestPopup from './BookingRequestPopup';
 import { useNavigation } from '@react-navigation/native';
+import { getPendingBookings, listenForPendingBookingUpdates } from '../services/socketService';
 
 const API_BASE_URL = 'https://jyotishcallbackend-2uxrv.ondigitalocean.app/api/v1';
 
@@ -19,6 +20,10 @@ const BookingRequestHandler = () => {
   const [error, setError] = useState(null);
   const [isAccepting, setIsAccepting] = useState(false);
   const [isRejecting, setIsRejecting] = useState(false);
+  
+  // Real-time pending bookings state
+  const [pendingBookings, setPendingBookings] = useState([]);
+  const [pendingBookingsLoading, setPendingBookingsLoading] = useState(false);
   
   // Get socket from context and navigation
   const { socket, isConnected } = useSocket();
@@ -303,6 +308,48 @@ const BookingRequestHandler = () => {
   }, []);
 
   
+  // Fetch initial pending bookings when socket connects
+  useEffect(() => {
+    const fetchInitialPendingBookings = async () => {
+      if (!socket || !isConnected) {
+        console.log('📋 [PENDING] Socket not connected, skipping initial pending bookings fetch');
+        return;
+      }
+      
+      try {
+        setPendingBookingsLoading(true);
+        console.log('📋 [PENDING] Fetching initial pending bookings...');
+        const initialPendingBookings = await getPendingBookings(socket);
+        console.log('📋 [PENDING] Initial pending bookings:', initialPendingBookings);
+        setPendingBookings(initialPendingBookings);
+      } catch (error) {
+        console.error('📋 [PENDING] Failed to fetch initial pending bookings:', error);
+      } finally {
+        setPendingBookingsLoading(false);
+      }
+    };
+    
+    fetchInitialPendingBookings();
+  }, [socket, isConnected]);
+  
+  // Set up socket listener for real-time pending booking updates
+  useEffect(() => {
+    if (!socket || !isConnected) {
+      console.log('📋 [PENDING] Socket not connected, skipping pending booking updates listener');
+      return;
+    }
+    
+    console.log('📋 [PENDING] Setting up real-time pending booking updates listener');
+    
+    // Set up listener for pending booking updates
+    const cleanupPendingUpdates = listenForPendingBookingUpdates(socket, (updatedPendingBookings) => {
+      console.log('📋 [PENDING] Received pending bookings update:', updatedPendingBookings);
+      setPendingBookings(updatedPendingBookings);
+    });
+    
+    return cleanupPendingUpdates;
+  }, [socket, isConnected]);
+
   // Set up socket listener for booking requests and lifecycle events
   useEffect(() => {
     if (!socket || !isConnected) {
