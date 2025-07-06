@@ -288,8 +288,14 @@ const EnhancedChatScreen = ({ route, navigation }) => {
       extractedContent = message.message.trim();
       console.log('🔴 [ASTROLOGER-APP] Using message field:', extractedContent);
     } else {
-      extractedContent = '[Message content unavailable]';
-      console.log('🔴 [ASTROLOGER-APP] No valid content found, using fallback');
+      console.error('🔴 [ASTROLOGER-APP] No valid message content found - ignoring message:', {
+        id: message.id,
+        content: message.content,
+        text: message.text,
+        message: message.message,
+        sender: message.sender
+      });
+      return; // Don't add empty messages to state
     }
     
     // Normalize message to ensure consistent structure
@@ -640,9 +646,8 @@ const EnhancedChatScreen = ({ route, navigation }) => {
       messageText = item.message.trim();
       console.log('🔴 [ASTROLOGER-APP] Using message field for display:', messageText);
     } else {
-      // Final fallback - check if any field exists but might be empty
-      messageText = 'Message content unavailable';
-      console.error('🔴 [ASTROLOGER-APP] NO VALID MESSAGE TEXT FOUND:', {
+      // No valid message content found - don't render empty bubbles
+      console.error('🔴 [ASTROLOGER-APP] NO VALID MESSAGE TEXT FOUND - SKIPPING RENDER:', {
         id: item.id,
         content: item.content,
         contentType: typeof item.content,
@@ -653,6 +658,7 @@ const EnhancedChatScreen = ({ route, navigation }) => {
         allFields: Object.keys(item),
         fullItem: JSON.stringify(item, null, 2)
       });
+      return null; // Don't render empty message bubbles
     }
     
     console.log('🔴 [ASTROLOGER-APP] FINAL MESSAGE TEXT FOR DISPLAY:', messageText);
