@@ -33,14 +33,14 @@ const AvailabilityScreen = ({ navigation }) => {
       
       // Fetch current online status from backend
       const response = await axios.get(
-        'http://localhost:5000/api/v1/astrologers/profile',
+        'https://jyotishcallbackend-2uxrv.ondigitalocean.app/api/v1/astrologers/profile',
         {
           headers: { Authorization: `Bearer ${userToken}` }
         }
       );
       
-      if (response.data.success && response.data.astrologer.onlineStatus) {
-        const { chat, call } = response.data.astrologer.onlineStatus;
+      if (response.data.success && response.data.data && response.data.data.onlineStatus) {
+        const { chat, call } = response.data.data.onlineStatus;
         setChatAvailable(chat === 1);
         setCallAvailable(call === 1);
       } else {
@@ -86,7 +86,7 @@ const AvailabilityScreen = ({ navigation }) => {
       
       // Update backend via API
       const response = await axios.put(
-        'http://localhost:5000/api/v1/astrologers/update-online-status',
+        'https://jyotishcallbackend-2uxrv.ondigitalocean.app/api/v1/astrologers/update-online-status',
         { onlineStatus },
         {
           headers: { Authorization: `Bearer ${userToken}` }

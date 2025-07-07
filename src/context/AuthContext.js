@@ -163,7 +163,7 @@ export const AuthProvider = ({ children }) => {
       setIsLoading(true);
       
       // Call backend API to update availability status
-      const response = await axios.post('http://localhost:5000/api/v1/astrologers/update-status', {
+      const response = await axios.post('https://jyotishcallbackend-2uxrv.ondigitalocean.app/api/v1/astrologers/update-status', {
         isAvailable
       }, {
         headers: { Authorization: `Bearer ${userToken}` }
