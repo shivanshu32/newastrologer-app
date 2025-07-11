@@ -69,7 +69,45 @@ const HomeScreen = ({ navigation }) => {
         fetchPendingBookings();
       });
       
-      return cleanupPendingUpdates;
+      // Listen for call status updates
+      console.log('🏠 [HOME] Setting up call_status_update listener');
+      socket.on('call_status_update', (data) => {
+        console.log('📞 [HOME] Received call status update:', data);
+        
+        // Extract relevant data
+        const { status, message, bookingId } = data;
+        
+        // Show alert with appropriate message based on call status
+        if (status) {
+          let title = 'Call Update';
+          
+          // Determine alert title based on status
+          if (status === 'completed') {
+            title = 'Call Completed';
+            // Refresh wallet balance on call completion
+            fetchWalletBalance();
+          } else if (status === 'no-answer' || status === 'failed' || status === 'busy') {
+            title = 'Call Failed';
+          } else if (status === 'in-progress') {
+            title = 'Call Connected';
+          }
+          
+          // Show alert with call status message
+          Alert.alert(title, message || `Call status: ${status}`);
+          
+          // Refresh pending bookings for completed or failed calls
+          if (['completed', 'no-answer', 'failed', 'busy'].includes(status)) {
+            console.log('🔄 [HOME] Refreshing pending bookings after call status update');
+            fetchPendingBookings();
+          }
+        }
+      });
+      
+      return () => {
+        cleanupPendingUpdates();
+        console.log('🧹 [HOME] Cleaning up call_status_update listener');
+        socket.off('call_status_update');
+      };
     }
     
     return () => {

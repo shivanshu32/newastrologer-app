@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
+import { useSocket } from '../../context/SocketContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const API_BASE_URL = 'https://jyotishcallbackend-2uxrv.ondigitalocean.app/api/v1';
@@ -22,7 +23,54 @@ const WalletScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState('all');
   const { user } = useAuth();
+  const { socket } = useSocket();
 
+  useEffect(() => {
+    fetchWalletData();
+    
+    // Set up socket listener for call status updates
+    if (socket) {
+      console.log('💰 [WalletScreen] Setting up call_status_update listener');
+      
+      // Listen for call status updates
+      socket.on('call_status_update', (data) => {
+        console.log('📞 [WalletScreen] Received call status update:', data);
+        
+        // Extract relevant data
+        const { status } = data;
+        
+        // Refresh wallet balance on call completion (as earnings may have been added)
+        if (status === 'completed') {
+          console.log('💰 [WalletScreen] Refreshing wallet balance after completed call');
+          fetchWalletBalance();
+          
+          // Also refresh transactions to show the new earning
+          fetchTransactions();
+          
+          // Show notification about earnings update
+          Alert.alert(
+            'Earnings Updated', 
+            'Your wallet has been updated with earnings from a completed call.'
+          );
+        }
+      });
+      
+      // Listen for wallet updates
+      socket.on('wallet_updated', (data) => {
+        console.log('💰 [WalletScreen] Received wallet update:', data);
+        fetchWalletBalance();
+        fetchTransactions();
+      });
+      
+      // Clean up listeners on component unmount
+      return () => {
+        console.log('🧹 [WalletScreen] Cleaning up socket listeners');
+        socket.off('call_status_update');
+        socket.off('wallet_updated');
+      };
+    }
+  }, [socket]);
+  
   useEffect(() => {
     fetchWalletData();
   }, []);

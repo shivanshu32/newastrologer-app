@@ -1,17 +1,21 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
-import { NotificationProvider } from './src/context/NotificationContext';
+import { NotificationProvider } from './src/context/NotificationProvider';
 import { SocketProvider } from './src/context/SocketContext';
 import AuthNavigator from './src/navigation/AuthNavigator';
 import MainNavigator from './src/navigation/MainNavigator';
+import UpdateRequiredScreen from './src/screens/UpdateRequiredScreen';
 import NotificationHandler from './src/components/NotificationHandler';
-import { LogBox, View } from 'react-native';
+import { LogBox, View, ActivityIndicator, Text } from 'react-native';
 import navigationConfig from './src/navigation/NavigationConfig';
 // import LogRocket from '@logrocket/react-native'; // Temporarily disabled due to build issues
 import Constants from 'expo-constants';
 import * as Sentry from '@sentry/react-native';
+
+// Import version check hook
+import useVersionCheck from './src/hooks/useVersionCheck';
 
 // Import mock testing utility for Expo Go
 import './src/utils/testMocks';
@@ -57,6 +61,60 @@ LogBox.ignoreLogs([
 // Main app component with navigation structure
 const AppContent = () => {
   const { userToken } = useAuth();
+  const { checkForUpdatesOnLaunch } = useVersionCheck();
+  const [updateRequired, setUpdateRequired] = useState(null);
+  const [versionCheckComplete, setVersionCheckComplete] = useState(false);
+  
+  // Check for updates on app launch
+  useEffect(() => {
+    const performVersionCheck = async () => {
+      try {
+        console.log('Performing version check on app launch...');
+        const updateData = await checkForUpdatesOnLaunch();
+        
+        if (updateData && updateData.updateRequired) {
+          console.log('Update required, setting update data:', updateData);
+          setUpdateRequired(updateData);
+        } else {
+          console.log('No update required');
+        }
+      } catch (error) {
+        console.error('Version check failed:', error);
+      } finally {
+        setVersionCheckComplete(true);
+      }
+    };
+
+    performVersionCheck();
+  }, []);
+  
+  // Show loading during version check
+  if (!versionCheckComplete) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#FFFFFF' }}>
+        <ActivityIndicator size="large" color="#8A2BE2" />
+        <View style={{ marginTop: 16, alignItems: 'center' }}>
+          <Text style={{ color: '#6B7280', fontSize: 16 }}>Checking for updates...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  // Show update screen if update is required
+  if (updateRequired) {
+    return (
+      <UpdateRequiredScreen 
+        route={{
+          params: {
+            currentVersion: updateRequired.currentVersion,
+            latestVersion: updateRequired.latestVersion,
+            updateMessage: updateRequired.updateMessage,
+            forceUpdate: updateRequired.forceUpdate,
+          }
+        }}
+      />
+    );
+  }
 
   return (
     <>

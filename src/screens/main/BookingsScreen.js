@@ -422,8 +422,55 @@ const BookingsScreen = ({ navigation }) => {
   useFocusEffect(
     useCallback(() => {
       fetchBookings();
+      return () => {};
     }, [fetchBookings])
   );
+  
+  // Set up socket listener for call status updates
+  useEffect(() => {
+    if (socket) {
+      console.log('🔄 [BookingsScreen] Setting up call_status_update listener');
+      
+      // Listen for call status updates
+      socket.on('call_status_update', (data) => {
+        console.log('📞 [BookingsScreen] Received call status update:', data);
+        
+        // Extract relevant data
+        const { status, message, bookingId } = data;
+        
+        // Show alert with appropriate message based on call status
+        if (status) {
+          let title = 'Call Update';
+          
+          // Determine alert title based on status
+          if (status === 'completed') {
+            title = 'Call Completed';
+          } else if (status === 'no-answer' || status === 'failed' || status === 'busy') {
+            title = 'Call Failed';
+          } else if (status === 'in-progress') {
+            title = 'Call Connected';
+          }
+          
+          // Show alert with call status message
+          Alert.alert(title, message || `Call status: ${status}`);
+          
+          // Refresh bookings list for completed or failed calls
+          if (['completed', 'no-answer', 'failed', 'busy'].includes(status)) {
+            console.log('🔄 [BookingsScreen] Refreshing bookings after call status update');
+            fetchBookings();
+          }
+        }
+      });
+      
+      // Clean up listener on component unmount
+      return () => {
+        console.log('🧹 [BookingsScreen] Cleaning up call_status_update listener');
+        socket.off('call_status_update');
+      };
+    }
+    
+    return () => {};
+  }, [socket, fetchBookings]);
 
   const filteredBookings = getFilteredBookings();
 
