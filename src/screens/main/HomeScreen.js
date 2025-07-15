@@ -60,7 +60,17 @@ const HomeScreen = ({ navigation }) => {
     console.log('HomeScreen useEffect - BookingRequestHandler handles booking requests globally');
     
     // Set up real-time listener for pending booking updates
+    console.log('🔥 [DEBUG] Socket setup useEffect triggered in astrologer-app HomeScreen');
+    console.log('🔥 [DEBUG] Socket state in astrologer-app:', {
+      socketExists: !!socket,
+      isConnected: isConnected,
+      socketConnected: socket?.connected,
+      socketId: socket?.id,
+      timestamp: new Date().toISOString()
+    });
+    
     if (socket && isConnected) {
+      console.log('🔥 [DEBUG] Socket is connected, setting up listeners in astrologer-app...');
       console.log('🏠 [HOME] Setting up real-time pending booking updates listener');
       
       const cleanupPendingUpdates = listenForPendingBookingUpdates(socket, (updatedPendingBookings) => {
@@ -70,9 +80,18 @@ const HomeScreen = ({ navigation }) => {
       });
       
       // Listen for call status updates
-      console.log('🏠 [HOME] Setting up call_status_update listener');
+      console.log('🔥 [DEBUG] Setting up call_status_update listener in astrologer-app HomeScreen');
+      console.log('🔥 [DEBUG] Socket state in astrologer-app:', {
+        socketExists: !!socket,
+        socketConnected: socket?.connected,
+        socketId: socket?.id,
+        timestamp: new Date().toISOString()
+      });
+      
       socket.on('call_status_update', (data) => {
-        console.log('📞 [HOME] Received call status update:', data);
+        console.log('🔥 [DEBUG] call_status_update event received in astrologer-app HomeScreen!');
+        console.log('📞 [HOME] Received call status update:', JSON.stringify(data, null, 2));
+        console.log('📞 [HOME] Event timestamp:', new Date().toISOString());
         
         // Extract relevant data
         const { status, message, bookingId } = data;
@@ -102,6 +121,38 @@ const HomeScreen = ({ navigation }) => {
           }
         }
       });
+      
+      // Add debugging for socket connection events
+      socket.on('connect', () => {
+        console.log('🔥 [DEBUG] Socket connected in astrologer-app HomeScreen, ID:', socket.id);
+      });
+      
+      socket.on('disconnect', (reason) => {
+        console.log('🔥 [DEBUG] Socket disconnected in astrologer-app HomeScreen, reason:', reason);
+      });
+      
+      // Debug room membership
+      socket.on('room_joined', (data) => {
+        console.log('🔥 [DEBUG] Joined room in astrologer-app:', data);
+      });
+      
+      socket.on('room_left', (data) => {
+        console.log('🔥 [DEBUG] Left room in astrologer-app:', data);
+      });
+      
+      // Add a catch-all listener for debugging
+      const originalOn = socket.on;
+      socket.on = function(event, handler) {
+        if (event === 'call_status_update') {
+          console.log('🔥 [DEBUG] Registering listener for call_status_update in astrologer-app');
+        }
+        return originalOn.call(this, event, (...args) => {
+          if (event === 'call_status_update') {
+            console.log('🔥 [DEBUG] call_status_update event triggered in astrologer-app!', args);
+          }
+          return handler(...args);
+        });
+      };
       
       return () => {
         cleanupPendingUpdates();
@@ -147,9 +198,9 @@ const HomeScreen = ({ navigation }) => {
       
       let chatItems = [];
       
-      // Process real-time pending bookings - ONLY CHAT consultations with refined logic
+      // Process real-time pending bookings - ALL consultation types with refined logic
       if (realTimePendingBookings && Array.isArray(realTimePendingBookings)) {
-        const chatBookings = realTimePendingBookings
+        const allBookings = realTimePendingBookings
           .filter(booking => {
             // Filter out invalid bookings and only show relevant statuses
             if (!booking || !booking.status) return false;
@@ -183,7 +234,7 @@ const HomeScreen = ({ navigation }) => {
                 userId: (booking.user && booking.user._id) || 'unknown',
                 userName: (booking.user && booking.user.name) || 'User',
                 userImage: 'https://freesvg.org/img/abstract-user-flat-4.png',
-                type: 'chat', // Always chat for this section
+                type: booking.type || booking.consultationType || 'chat', // Use actual booking type
                 status: booking.status,
                 requestedTime: booking.createdAt || new Date().toISOString(),
                 itemType: 'booking',
@@ -199,7 +250,7 @@ const HomeScreen = ({ navigation }) => {
             }
           }).filter(booking => booking !== null);
         
-        chatItems = [...chatItems, ...chatBookings];
+        chatItems = [...chatItems, ...allBookings];
       }
       
       // Process active sessions - ONLY CHAT sessions that are truly in progress

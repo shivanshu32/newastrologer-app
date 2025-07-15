@@ -117,10 +117,10 @@ class ChatConnectionManager {
     this.socket.on('receive_message', (message) => {
       console.log('🔴 [ASTROLOGER-APP] Received message event:', message);
       console.log('🔴 [ASTROLOGER-APP] Message roomId:', message.roomId);
-      console.log('🔴 [ASTROLOGER-APP] Expected roomId:', `room:${this.currentBookingId}`);
+      console.log('🔴 [ASTROLOGER-APP] Expected roomId:', `consultation:${this.currentBookingId}`);
       
-      // Backend sends roomId as 'room:bookingId', so check both formats
-      const expectedRoomId = `room:${this.currentBookingId}`;
+      // Backend sends roomId as 'consultation:bookingId', so check both formats
+      const expectedRoomId = `consultation:${this.currentBookingId}`;
       if (message.roomId === expectedRoomId || message.roomId === this.currentBookingId) {
         console.log('🔴 [ASTROLOGER-APP] Message accepted, normalizing fields');
         
@@ -192,8 +192,48 @@ class ChatConnectionManager {
       this.notifyStatusUpdate({ type: 'session_started', data });
     });
 
+    // New session timer events from backend
+    this.socket.on('session_timer_started', (data) => {
+      console.log('🔴 [ASTROLOGER-APP] Session timer started event received:', data);
+      console.log('🔴 [ASTROLOGER-APP] Current booking ID:', this.currentBookingId);
+      console.log('🔴 [ASTROLOGER-APP] Event booking ID:', data.bookingId);
+      
+      if (data.bookingId === this.currentBookingId || data.bookingId == this.currentBookingId) {
+        console.log('🔴 [ASTROLOGER-APP] ✅ Timer started for current booking - activating session');
+        this.notifyConnectionStatus('session_active', 'Session timer started');
+        this.notifyStatusUpdate({ 
+          type: 'session_started', 
+          data,
+          sessionId: data.sessionId,
+          duration: data.duration || 0
+        });
+      } else {
+        console.log('🔴 [ASTROLOGER-APP] ❌ Timer started for different booking - ignoring');
+      }
+    });
+
+    this.socket.on('session_timer_update', (data) => {
+      console.log('🔴 [ASTROLOGER-APP] Session timer update received:', data);
+      console.log('🔴 [ASTROLOGER-APP] Current booking ID:', this.currentBookingId);
+      console.log('🔴 [ASTROLOGER-APP] Event booking ID:', data.bookingId);
+      
+      if (data.bookingId === this.currentBookingId || data.bookingId == this.currentBookingId) {
+        console.log('🔴 [ASTROLOGER-APP] ✅ Timer update for current booking:', data.formattedTime);
+        this.notifyStatusUpdate({ 
+          type: 'timer', 
+          durationSeconds: data.duration,
+          seconds: data.duration,
+          formattedTime: data.formattedTime,
+          sessionId: data.sessionId
+        });
+      } else {
+        console.log('🔴 [ASTROLOGER-APP] ❌ Timer update for different booking - ignoring');
+      }
+    });
+
+    // Legacy session timer event (keeping for backward compatibility)
     this.socket.on('session_timer', (data) => {
-      console.log('🔴 [ASTROLOGER-APP] Session timer event received:', data);
+      console.log('🔴 [ASTROLOGER-APP] Legacy session timer event received:', data);
       // Backend sends durationSeconds, not seconds
       const timerValue = data.durationSeconds || data.seconds || 0;
       console.log('🔴 [ASTROLOGER-APP] Timer value extracted:', timerValue);

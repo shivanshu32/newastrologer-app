@@ -5,11 +5,49 @@ import * as Application from 'expo-application';
 class VersionService {
   constructor() {
     // Backend URL - update for production
-    this.baseURL = process.env.NODE_ENV === 'production' 
-      ? 'https://jyotishcallbackend-2uxrv.ondigitalocean.app/api'
-      : 'http://localhost:5001/api';
+    this.baseURL = 'https://jyotishcallbackend-2uxrv.ondigitalocean.app/api/v1';
     this.appType = 'astrologer';
-    this.currentVersion = Constants.expoConfig?.version || '1.0.0';
+    this.currentVersion = this.getCurrentVersionFromDevice();
+    this.playStoreUrl = 'https://play.google.com/store/apps/details?id=com.jyotishcallastrologerapp&pli=1';
+  }
+
+  /**
+   * Get current app version using multiple fallback methods
+   * This ensures version retrieval works in both development and production
+   */
+  getCurrentVersionFromDevice() {
+    try {
+      // Method 1: Expo Application (most reliable for production)
+      if (Application.nativeApplicationVersion) {
+        console.log('Astrologer App - Version from Application.nativeApplicationVersion:', Application.nativeApplicationVersion);
+        return Application.nativeApplicationVersion;
+      }
+
+      // Method 2: Expo Constants (works in development and some production builds)
+      if (Constants.expoConfig?.version) {
+        console.log('Astrologer App - Version from Constants.expoConfig.version:', Constants.expoConfig?.version);
+        return Constants.expoConfig.version;
+      }
+
+      // Method 3: Expo Constants manifest (legacy fallback)
+      if (Constants.manifest?.version) {
+        console.log('Astrologer App - Version from Constants.manifest.version:', Constants.manifest.version);
+        return Constants.manifest.version;
+      }
+
+      // Method 4: Expo Constants manifest2 (newer Expo versions)
+      if (Constants.manifest2?.extra?.expoClient?.version) {
+        console.log('Astrologer App - Version from Constants.manifest2:', Constants.manifest2.extra.expoClient.version);
+        return Constants.manifest2.extra.expoClient.version;
+      }
+
+      // Final fallback
+      console.warn('Astrologer App - Could not retrieve version from any source, using fallback');
+      return '1.0.0';
+    } catch (error) {
+      console.error('Astrologer App - Error retrieving app version:', error);
+      return '1.0.0';
+    }
   }
 
   /**
@@ -20,19 +58,90 @@ class VersionService {
   }
 
   /**
+   * Fetch latest version from Play Store
+   */
+  async getPlayStoreVersion() {
+    try {
+      console.log('Astrologer App - Fetching latest version from Play Store...');
+      
+      const response = await fetch(this.playStoreUrl, {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch Play Store page');
+      }
+
+      const html = await response.text();
+      
+      // Extract version from Play Store HTML
+      // Look for version pattern in the HTML
+      const versionMatch = html.match(/"([0-9]+\.[0-9]+\.[0-9]+)"/g);
+      
+      if (versionMatch && versionMatch.length > 0) {
+        // Get the most likely version string (usually the first one found)
+        const version = versionMatch[0].replace(/"/g, '');
+        console.log('Astrologer App - Play Store version found:', version);
+        return version;
+      }
+      
+      // Alternative pattern matching
+      const altVersionMatch = html.match(/Current Version[\s\S]*?([0-9]+\.[0-9]+\.[0-9]+)/i);
+      if (altVersionMatch && altVersionMatch[1]) {
+        console.log('Astrologer App - Play Store version found (alt method):', altVersionMatch[1]);
+        return altVersionMatch[1];
+      }
+      
+      throw new Error('Version not found in Play Store page');
+    } catch (error) {
+      console.error('Astrologer App - Failed to fetch Play Store version:', error);
+      return null;
+    }
+  }
+
+  /**
    * Check if app update is required
-   * This can be implemented in multiple ways:
-   * 1. Backend API that returns minimum required version
-   * 2. Firebase Remote Config
-   * 3. Play Store API (more complex)
-   * 
-   * For now, implementing with backend API approach
+   * Enhanced version that checks Play Store first, then falls back to backend
    */
   async checkForUpdate() {
     try {
-      console.log('Checking for app updates...');
+      console.log('Astrologer App - Checking for app updates...');
       
-      // Method 1: Backend API approach
+      // Step 1: Try to get latest version from Play Store
+      const playStoreVersion = await this.getPlayStoreVersion();
+      
+      if (playStoreVersion) {
+        // Compare current version with Play Store version
+        const isUpdateRequired = this.compareVersions(this.currentVersion, playStoreVersion) < 0;
+        
+        if (isUpdateRequired) {
+          console.log(`Astrologer App - Update required: Current ${this.currentVersion} < Play Store ${playStoreVersion}`);
+          return {
+            updateRequired: true,
+            latestVersion: playStoreVersion,
+            minimumVersion: playStoreVersion,
+            updateMessage: `A new version (${playStoreVersion}) is available on Play Store. Please update to continue using the app.`,
+            forceUpdate: true,
+            playStoreUrl: this.playStoreUrl,
+          };
+        } else {
+          console.log(`Astrologer App - No update required: Current ${this.currentVersion} >= Play Store ${playStoreVersion}`);
+          return {
+            updateRequired: false,
+            latestVersion: playStoreVersion,
+            minimumVersion: this.currentVersion,
+            updateMessage: '',
+            forceUpdate: false,
+            playStoreUrl: this.playStoreUrl,
+          };
+        }
+      }
+      
+      // Step 2: Fallback to backend API if Play Store check fails
+      console.log('Astrologer App - Play Store check failed, falling back to backend API...');
       const response = await fetch(`${this.baseURL}/version-check`, {
         method: 'POST',
         headers: {
@@ -46,7 +155,7 @@ class VersionService {
       });
 
       if (!response.ok) {
-        throw new Error('Failed to check version');
+        throw new Error('Failed to check version from backend');
       }
 
       const data = await response.json();
@@ -57,20 +166,19 @@ class VersionService {
         minimumVersion: data.minimumVersion || this.currentVersion,
         updateMessage: data.updateMessage || 'A new version is available. Please update to continue using the app.',
         forceUpdate: data.forceUpdate || false,
-        playStoreUrl: data.playStoreUrl || this.getDefaultPlayStoreUrl(),
+        playStoreUrl: this.playStoreUrl,
       };
     } catch (error) {
-      console.error('Version check failed:', error);
+      console.error('Astrologer App - Version check failed:', error);
       
-      // Fallback: Return no update required if service fails
-      // In production, you might want to handle this differently
+      // Final fallback: Return no update required if all methods fail
       return {
         updateRequired: false,
         latestVersion: this.currentVersion,
         minimumVersion: this.currentVersion,
         updateMessage: '',
         forceUpdate: false,
-        playStoreUrl: this.getDefaultPlayStoreUrl(),
+        playStoreUrl: this.playStoreUrl,
       };
     }
   }

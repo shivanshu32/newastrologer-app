@@ -2,7 +2,7 @@ import { ExpoConfig, ConfigContext } from 'expo/config';
 
 export default ({ config }) => ({
   ...config,
-  name: "JyotishCall Astrologer",
+  name: "com.jyotishcallastrologerapp",
   slug: "jyotishcall-astrologer-app",
   version: "1.0.0",
   orientation: "portrait",
@@ -40,7 +40,7 @@ export default ({ config }) => ({
       "BLUETOOTH_CONNECT",
       "WAKE_LOCK"
     ],
-    package: "com.jyotishcall.astrologer"
+    package: "com.jyotishcallastrologerapp"
   },
   web: {
     favicon: "./assets/favicon.png"

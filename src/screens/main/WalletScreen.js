@@ -30,11 +30,19 @@ const WalletScreen = () => {
     
     // Set up socket listener for call status updates
     if (socket) {
-      console.log('💰 [WalletScreen] Setting up call_status_update listener');
+      console.log('🔥 [DEBUG] Setting up call_status_update listener in astrologer-app WalletScreen');
+      console.log('🔥 [DEBUG] Socket state in WalletScreen:', {
+        socketExists: !!socket,
+        socketConnected: socket?.connected,
+        socketId: socket?.id,
+        timestamp: new Date().toISOString()
+      });
       
       // Listen for call status updates
       socket.on('call_status_update', (data) => {
-        console.log('📞 [WalletScreen] Received call status update:', data);
+        console.log('🔥 [DEBUG] call_status_update event received in astrologer-app WalletScreen!');
+        console.log('📞 [WalletScreen] Received call status update:', JSON.stringify(data, null, 2));
+        console.log('📞 [WalletScreen] Event timestamp:', new Date().toISOString());
         
         // Extract relevant data
         const { status } = data;

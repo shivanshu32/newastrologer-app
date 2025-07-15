@@ -428,12 +428,22 @@ const BookingsScreen = ({ navigation }) => {
   
   // Set up socket listener for call status updates
   useEffect(() => {
+    console.log('🔥 [DEBUG] Socket setup useEffect triggered in astrologer-app BookingsScreen');
+    console.log('🔥 [DEBUG] Socket state in BookingsScreen:', {
+      socketExists: !!socket,
+      socketConnected: socket?.connected,
+      socketId: socket?.id,
+      timestamp: new Date().toISOString()
+    });
+    
     if (socket) {
-      console.log('🔄 [BookingsScreen] Setting up call_status_update listener');
+      console.log('🔥 [DEBUG] Setting up call_status_update listener in astrologer-app BookingsScreen');
       
       // Listen for call status updates
       socket.on('call_status_update', (data) => {
-        console.log('📞 [BookingsScreen] Received call status update:', data);
+        console.log('🔥 [DEBUG] call_status_update event received in astrologer-app BookingsScreen!');
+        console.log('📞 [BookingsScreen] Received call status update:', JSON.stringify(data, null, 2));
+        console.log('📞 [BookingsScreen] Event timestamp:', new Date().toISOString());
         
         // Extract relevant data
         const { status, message, bookingId } = data;

@@ -91,20 +91,9 @@ const ProfileScreen = () => {
           <Text style={styles.name}>{astrologer.name}</Text>
           <Text style={styles.specialization}>{astrologer.specialization}</Text>
           
-          <View style={styles.statusContainer}>
-            <Text style={styles.statusLabel}>
-              {astrologer.online ? 'Online' : 'Offline'}
-            </Text>
-            <Switch
-              value={astrologer.online}
-              onValueChange={handleStatusChange}
-              disabled={statusLoading}
-              trackColor={{ false: '#ccc', true: '#8A2BE2' }}
-              thumbColor="#fff"
-            />
-          </View>
+        
           
-          <View style={styles.statsContainer}>
+          {/* <View style={styles.statsContainer}>
             <View style={styles.statItem}>
               <Text style={styles.statValue}>₹{astrologer.walletBalance}</Text>
               <Text style={styles.statLabel}>Earnings</Text>
@@ -119,7 +108,8 @@ const ProfileScreen = () => {
               <Text style={styles.statValue}>{astrologer.rating}</Text>
               <Text style={styles.statLabel}>Rating</Text>
             </View>
-          </View>
+          </View> */}
+
         </View>
         
         <View style={styles.sectionTitle}>

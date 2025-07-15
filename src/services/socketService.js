@@ -471,28 +471,111 @@ export const initializeAckHandling = (socket) => {
 };
 
 /**
+ * Listen for session join notifications from users
+ * @param {Object} socket - Socket.io instance
+ * @param {Function} onSessionJoinRequest - Callback for session join requests
+ * @returns {Function} - Cleanup function to remove listener
+ */
+export const listenForSessionJoinNotifications = (socket, onSessionJoinRequest) => {
+  if (!socket || !socket.connected) {
+    console.warn('Socket not connected for session join notifications');
+    return () => {};
+  }
+  
+  console.log('🔔 [SESSION_JOIN] Setting up session join notification listener');
+  
+  // Listen for user attempting to join session
+  const handleUserAttemptingToJoinSession = (data) => {
+    console.log('🔔 [SESSION_JOIN] User attempting to join session:', data);
+    if (onSessionJoinRequest) {
+      onSessionJoinRequest(data);
+    }
+  };
+  
+  socket.on('user_attempting_to_join_session', handleUserAttemptingToJoinSession);
+  
+  // Return cleanup function
+  return () => {
+    console.log('🔔 [SESSION_JOIN] Cleaning up session join notification listener');
+    socket.off('user_attempting_to_join_session', handleUserAttemptingToJoinSession);
+  };
+};
+
+/**
+ * Respond to a session join request from user
+ * @param {Object} socket - Socket.io instance
+ * @param {String} bookingId - Booking ID
+ * @param {Boolean} accepted - Whether to accept or decline the session join
+ * @param {String} reason - Optional reason for declining
+ * @returns {Promise<Object>} - Promise that resolves with response
+ */
+export const respondToSessionJoinRequest = async (socket, bookingId, accepted, reason = null) => {
+  if (!socket || !socket.connected) {
+    return Promise.reject(new Error('Socket not connected'));
+  }
+  
+  console.log('🔔 [SESSION_JOIN] Responding to session join request:', { bookingId, accepted, reason });
+  
+  return new Promise((resolve, reject) => {
+    // Set timeout for response
+    const timeout = setTimeout(() => {
+      reject(new Error('Response timeout'));
+    }, RESPONSE_TIMEOUT);
+    
+    // Send response
+    socket.emit('astrologer_session_join_response', {
+      bookingId,
+      accepted,
+      reason
+    }, (response) => {
+      clearTimeout(timeout);
+      
+      if (response && response.success) {
+        resolve(response);
+      } else {
+        console.error('Session join response error:', response);
+        reject(new Error(response ? response.message : 'Unknown error'));
+      }
+    });
+  });
+};
+
+/**
  * Get current pending bookings for the astrologer
  * @param {Object} socket - Socket.io instance
  * @returns {Promise<Array>} - Promise that resolves with pending bookings array
  */
 export const getPendingBookings = async (socket) => {
+  console.log('📋 [CLIENT] getPendingBookings called');
+  console.log('📋 [CLIENT] Socket connected:', socket?.connected);
+  console.log('📋 [CLIENT] Socket ID:', socket?.id);
+  
   if (!socket || !socket.connected) {
+    console.log('📋 [CLIENT] Socket not connected, rejecting');
     return Promise.reject(new Error('Socket not connected'));
   }
   
   return new Promise((resolve, reject) => {
+    console.log('📋 [CLIENT] Setting up timeout and emitting event');
+    
+    // Set timeout for response
     const timeout = setTimeout(() => {
-      reject(new Error('Get pending bookings timeout'));
+      console.log('📋 [CLIENT] Request timeout after', RESPONSE_TIMEOUT, 'ms');
+      reject(new Error('Request timeout'));
     }, RESPONSE_TIMEOUT);
     
+    // Listen for response
+    console.log('📋 [CLIENT] Emitting get_pending_bookings event');
     socket.emit('get_pending_bookings', {}, (response) => {
+      console.log('📋 [CLIENT] Received response:', response);
       clearTimeout(timeout);
       
       if (response && response.success) {
+        console.log('📋 [CLIENT] Success response with', response.pendingBookings?.length || 0, 'bookings');
         resolve(response.pendingBookings || []);
       } else {
-        console.error('Get pending bookings error:', response);
-        reject(new Error(response ? response.message : 'Failed to get pending bookings'));
+        console.error('📋 [CLIENT] Get pending bookings error:', response);
+        reject(new Error(response ? response.message : 'Unknown error'));
       }
     });
   });
@@ -547,5 +630,7 @@ export default {
   setupAckHandler,
   initializeAckHandling,
   getPendingBookings,
-  listenForPendingBookingUpdates
+  listenForPendingBookingUpdates,
+  listenForSessionJoinNotifications,
+  respondToSessionJoinRequest
 };

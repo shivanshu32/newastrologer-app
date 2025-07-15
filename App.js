@@ -2,12 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { AuthProvider, useAuth } from './src/context/AuthContext';
-import { NotificationProvider } from './src/context/NotificationProvider';
+import { NotificationProvider } from './src/context/NotificationContext';
 import { SocketProvider } from './src/context/SocketContext';
 import AuthNavigator from './src/navigation/AuthNavigator';
 import MainNavigator from './src/navigation/MainNavigator';
 import UpdateRequiredScreen from './src/screens/UpdateRequiredScreen';
 import NotificationHandler from './src/components/NotificationHandler';
+import SessionJoinNotificationHandler from './src/components/SessionJoinNotificationHandler';
 import { LogBox, View, ActivityIndicator, Text } from 'react-native';
 import navigationConfig from './src/navigation/NavigationConfig';
 // import LogRocket from '@logrocket/react-native'; // Temporarily disabled due to build issues
@@ -131,6 +132,7 @@ const AppContent = () => {
           <AuthNavigator />
         )}
         <NotificationHandler />
+        {userToken && <SessionJoinNotificationHandler />}
       </NavigationContainer>
     </>
   );

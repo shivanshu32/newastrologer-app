@@ -193,13 +193,8 @@ const BookingRequestHandler = () => {
                 [{ text: 'OK' }]
               );
               
-              // Navigate to Home/Dashboard instead of WaitingRoom for voice calls
-              try {
-                navigation.navigate('Home');
-                console.log(' [SUCCESS] Navigated to Home for voice consultation');
-              } catch (navError) {
-                console.error(' [ERROR] Navigation to Home failed:', navError);
-              }
+              // Stay on current screen for voice calls - no navigation needed
+              console.log(' [SUCCESS] Voice consultation accepted - staying on current screen');
               
             } else {
               // For chat and video consultations, use the traditional WaitingRoom flow

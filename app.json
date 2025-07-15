@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Jyotish Call - Astrologer",
+    "name": "com.jyotishcallastrologerapp",
     "slug": "jyotishcall-astrologer-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -64,7 +64,15 @@
           "project": "react-native",
           "organization": "jyotishcall"
         }
-      ]
+      ],
+      [
+        "@config-plugins/react-native-webrtc",
+        {
+          "cameraPermission": "Allow Jyotish Call to access your camera for video consultations with users",
+          "microphonePermission": "Allow Jyotish Call to access your microphone for voice consultations with users"
+        }
+      ],
+      "./plugins/withCustomGradle"
     ],
     "extra": {
       "eas": {

@@ -1,8 +1,9 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, BackHandler, Alert } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, BackHandler, Alert, TouchableOpacity, ScrollView } from 'react-native';
 import { useNavigation, useRoute, useFocusEffect } from '@react-navigation/native';
 import { useSocket } from '../context/SocketContext';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 /**
  * Waiting room screen for astrologers after accepting a booking
@@ -13,10 +14,89 @@ const WaitingRoomScreen = () => {
   const route = useRoute();
   const { socket, isConnected } = useSocket();
   const [waitingTime, setWaitingTime] = useState(0);
+  const [isCancelling, setIsCancelling] = useState(false);
   const hasNavigated = useRef(false); // Use useRef for immediate updates
   
   // Extract booking details from route params
   const { bookingId, bookingDetails } = route.params || {};
+
+  // Cancel booking function
+  const cancelBooking = async () => {
+    try {
+      setIsCancelling(true);
+      
+      // Get astrologer token
+      const token = await AsyncStorage.getItem('astrologerToken');
+      if (!token) {
+        Alert.alert('Error', 'Authentication required. Please login again.');
+        return;
+      }
+
+      // Call backend API to cancel booking
+      const response = await fetch('https://jyotishcallbackend-2uxrv.ondigitalocean.app/api/bookings/cancel', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          bookingId: bookingId,
+          cancelledBy: 'astrologer',
+          reason: 'Cancelled by astrologer from waiting room'
+        }),
+      });
+
+      const data = await response.json();
+      
+      if (response.ok && data.success) {
+        // Emit socket event to notify user immediately
+        if (socket && isConnected) {
+          socket.emit('booking_cancelled_by_astrologer', {
+            bookingId: bookingId,
+            astrologerId: bookingDetails?.astrologer?._id,
+            userId: bookingDetails?.user?._id,
+            reason: 'Cancelled by astrologer'
+          });
+        }
+        
+        Alert.alert(
+          'Booking Cancelled',
+          'The booking has been cancelled successfully. The user has been notified.',
+          [{
+            text: 'OK',
+            onPress: () => navigation.navigate('Home')
+          }]
+        );
+      } else {
+        throw new Error(data.message || 'Failed to cancel booking');
+      }
+    } catch (error) {
+      console.error('Error cancelling booking:', error);
+      Alert.alert(
+        'Error',
+        'Failed to cancel booking. Please try again or contact support.',
+        [{ text: 'OK' }]
+      );
+    } finally {
+      setIsCancelling(false);
+    }
+  };
+
+  // Show cancel confirmation
+  const showCancelConfirmation = () => {
+    Alert.alert(
+      'Cancel Booking',
+      'Are you sure you want to cancel this booking? The user will be notified and refunded.',
+      [
+        { text: 'No', style: 'cancel' },
+        { 
+          text: 'Yes, Cancel', 
+          style: 'destructive',
+          onPress: cancelBooking
+        }
+      ]
+    );
+  };
 
   // Timer to track waiting time
   useEffect(() => {
@@ -38,12 +118,21 @@ const WaitingRoomScreen = () => {
   useEffect(() => {
     if (!socket || !isConnected || !bookingId) return;
 
-    // Join the room for this booking
-    socket.emit('join_room', { bookingId }, (response) => {
+    // Join the consultation room for this booking
+    const roomId = `consultation:${bookingId}`;
+    console.log('🔄 [ASTROLOGER-APP] Joining consultation room:', roomId);
+    
+    socket.emit('join_consultation_room', { 
+      bookingId, 
+      roomId,
+      userType: 'astrologer',
+      sessionId: bookingDetails?.sessionId || null
+    }, (response) => {
       if (response && response.success) {
-        console.log('Successfully joined room for booking:', bookingId);
+        console.log('✅ [ASTROLOGER-APP] Successfully joined consultation room for booking:', bookingId);
+        console.log('✅ [ASTROLOGER-APP] Room ID:', roomId);
       } else {
-        console.error('Failed to join room:', response?.error || 'Unknown error');
+        console.error('❌ [ASTROLOGER-APP] Failed to join consultation room:', response?.error || 'Unknown error');
       }
     });
 
@@ -317,41 +406,173 @@ const WaitingRoomScreen = () => {
     return null;
   }
 
+  // Helper function to format date and time
+  const formatDateTime = (dateString) => {
+    if (!dateString) return 'Not specified';
+    const date = new Date(dateString);
+    return date.toLocaleString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+  };
+
+  // Helper function to get consultation type with icon
+  const getConsultationType = () => {
+    const type = bookingDetails?.consultationType;
+    switch (type) {
+      case 'video':
+        return { icon: 'videocam', text: 'Video Call', color: '#FF6B6B' };
+      case 'voice':
+        return { icon: 'call', text: 'Voice Call', color: '#4ECDC4' };
+      case 'chat':
+        return { icon: 'chatbubbles', text: 'Chat Consultation', color: '#45B7D1' };
+      default:
+        return { icon: 'help-circle', text: 'Unknown', color: '#95A5A6' };
+    }
+  };
+
+  const consultationType = getConsultationType();
+
   return (
-    <View style={styles.container}>
-      <View style={styles.iconContainer}>
-        <Ionicons name="hourglass-outline" size={80} color="#8A2BE2" />
+    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+      {/* Header Section */}
+      <View style={styles.headerContainer}>
+        <View style={styles.iconContainer}>
+          <Ionicons name="hourglass-outline" size={60} color="#8A2BE2" />
+        </View>
+        <Text style={styles.title}>Waiting for User to Join</Text>
+        <Text style={styles.subtitle}>You'll be connected automatically when they join</Text>
       </View>
-      
-      <Text style={styles.title}>Waiting for User to Join</Text>
-      
-      <View style={styles.infoContainer}>
-        <Text style={styles.infoText}>
-          The user has been notified that you're ready for the consultation.
-        </Text>
-        <Text style={styles.infoText}>
-          You'll be automatically connected when they join.
-        </Text>
-      </View>
-      
+
+      {/* Waiting Timer */}
       <View style={styles.waitingContainer}>
         <ActivityIndicator size="large" color="#8A2BE2" />
-        <Text style={styles.waitingText}>Waiting time: {formatTime(waitingTime)}</Text>
+        <Text style={styles.waitingText}>Waiting: {formatTime(waitingTime)}</Text>
       </View>
-      
+
+      {/* Enhanced Booking Information */}
       <View style={styles.bookingInfoContainer}>
-        <Text style={styles.bookingInfoTitle}>Booking Details:</Text>
-        <Text style={styles.bookingInfoText}>
-          User: {bookingDetails?.user?.name || 'Unknown User'}
-        </Text>
-        <Text style={styles.bookingInfoText}>
-          Type: {bookingDetails?.consultationType === 'video' ? 'Video Call' : 'Chat'}
-        </Text>
-        <Text style={styles.bookingInfoText}>
-          Duration: {bookingDetails?.durationMinutes || 30} minutes
-        </Text>
+        <View style={styles.bookingHeader}>
+          <Ionicons name="document-text" size={24} color="#8A2BE2" />
+          <Text style={styles.bookingInfoTitle}>Booking Details</Text>
+        </View>
+
+        {/* User Information */}
+        <View style={styles.infoRow}>
+          <View style={styles.infoIconContainer}>
+            <Ionicons name="person" size={20} color="#666" />
+          </View>
+          <View style={styles.infoTextContainer}>
+            <Text style={styles.infoLabel}>User</Text>
+            <Text style={styles.infoValue}>{bookingDetails?.user?.name || 'Unknown User'}</Text>
+            {bookingDetails?.user?.phone && (
+              <Text style={styles.infoSubValue}>📱 {bookingDetails.user.phone}</Text>
+            )}
+          </View>
+        </View>
+
+        {/* Consultation Type */}
+        <View style={styles.infoRow}>
+          <View style={styles.infoIconContainer}>
+            <Ionicons name={consultationType.icon} size={20} color={consultationType.color} />
+          </View>
+          <View style={styles.infoTextContainer}>
+            <Text style={styles.infoLabel}>Consultation Type</Text>
+            <Text style={[styles.infoValue, { color: consultationType.color }]}>
+              {consultationType.text}
+            </Text>
+          </View>
+        </View>
+
+        {/* Duration */}
+        <View style={styles.infoRow}>
+          <View style={styles.infoIconContainer}>
+            <Ionicons name="time" size={20} color="#666" />
+          </View>
+          <View style={styles.infoTextContainer}>
+            <Text style={styles.infoLabel}>Duration</Text>
+            <Text style={styles.infoValue}>{bookingDetails?.durationMinutes || 30} minutes</Text>
+          </View>
+        </View>
+
+        {/* Amount */}
+        {bookingDetails?.amount && (
+          <View style={styles.infoRow}>
+            <View style={styles.infoIconContainer}>
+              <Ionicons name="cash" size={20} color="#27AE60" />
+            </View>
+            <View style={styles.infoTextContainer}>
+              <Text style={styles.infoLabel}>Amount</Text>
+              <Text style={[styles.infoValue, { color: '#27AE60', fontWeight: 'bold' }]}>₹{bookingDetails.amount}</Text>
+            </View>
+          </View>
+        )}
+
+        {/* Booking Time */}
+        <View style={styles.infoRow}>
+          <View style={styles.infoIconContainer}>
+            <Ionicons name="calendar" size={20} color="#666" />
+          </View>
+          <View style={styles.infoTextContainer}>
+            <Text style={styles.infoLabel}>Booked At</Text>
+            <Text style={styles.infoValue}>{formatDateTime(bookingDetails?.createdAt)}</Text>
+          </View>
+        </View>
+
+        {/* Booking ID */}
+        <View style={styles.infoRow}>
+          <View style={styles.infoIconContainer}>
+            <Ionicons name="barcode" size={20} color="#666" />
+          </View>
+          <View style={styles.infoTextContainer}>
+            <Text style={styles.infoLabel}>Booking ID</Text>
+            <Text style={styles.infoValue}>{bookingId}</Text>
+          </View>
+        </View>
+
+        {/* User's Question/Topic */}
+        {bookingDetails?.question && (
+          <View style={styles.infoRow}>
+            <View style={styles.infoIconContainer}>
+              <Ionicons name="help-circle" size={20} color="#666" />
+            </View>
+            <View style={styles.infoTextContainer}>
+              <Text style={styles.infoLabel}>User's Question</Text>
+              <Text style={styles.infoValue}>{bookingDetails.question}</Text>
+            </View>
+          </View>
+        )}
       </View>
-    </View>
+
+      {/* Action Buttons */}
+      <View style={styles.actionContainer}>
+        <TouchableOpacity 
+          style={[styles.cancelButton, isCancelling && styles.disabledButton]} 
+          onPress={showCancelConfirmation}
+          disabled={isCancelling}
+        >
+          {isCancelling ? (
+            <ActivityIndicator size="small" color="white" />
+          ) : (
+            <Ionicons name="close-circle" size={24} color="white" />
+          )}
+          <Text style={styles.cancelButtonText}>
+            {isCancelling ? 'Cancelling...' : 'Cancel Booking'}
+          </Text>
+        </TouchableOpacity>
+
+        <View style={styles.helpContainer}>
+          <Ionicons name="information-circle" size={16} color="#666" />
+          <Text style={styles.helpText}>
+            The user will be notified if you cancel this booking
+          </Text>
+        </View>
+      </View>
+    </ScrollView>
   );
 };
 
@@ -359,39 +580,47 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#F5F5F5',
-    alignItems: 'center',
-    justifyContent: 'center',
+  },
+  scrollContent: {
     padding: 20,
+    paddingBottom: 40,
+  },
+  headerContainer: {
+    alignItems: 'center',
+    marginBottom: 30,
   },
   iconContainer: {
-    marginBottom: 20,
+    marginBottom: 15,
+    backgroundColor: '#F0E6FF',
+    padding: 20,
+    borderRadius: 50,
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 20,
+    marginBottom: 8,
     textAlign: 'center',
   },
-  infoContainer: {
-    marginBottom: 30,
-    width: '100%',
-  },
-  infoText: {
+  subtitle: {
     fontSize: 16,
-    color: '#555',
+    color: '#666',
     textAlign: 'center',
-    marginBottom: 10,
+    lineHeight: 22,
   },
   waitingContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 40,
+    marginBottom: 30,
     backgroundColor: '#F0E6FF',
-    padding: 15,
-    borderRadius: 10,
-    width: '100%',
+    padding: 20,
+    borderRadius: 15,
     justifyContent: 'center',
+    shadowColor: '#8A2BE2',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   waitingText: {
     fontSize: 18,
@@ -402,24 +631,105 @@ const styles = StyleSheet.create({
   bookingInfoContainer: {
     backgroundColor: 'white',
     padding: 20,
-    borderRadius: 10,
-    width: '100%',
+    borderRadius: 15,
+    marginBottom: 30,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  bookingHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    paddingBottom: 15,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E8E8E8',
   },
   bookingInfoTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: 'bold',
     color: '#333',
-    marginBottom: 10,
+    marginLeft: 10,
   },
-  bookingInfoText: {
+  infoRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 18,
+    paddingVertical: 5,
+  },
+  infoIconContainer: {
+    width: 40,
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  infoTextContainer: {
+    flex: 1,
+    marginLeft: 10,
+  },
+  infoLabel: {
+    fontSize: 14,
+    color: '#888',
+    marginBottom: 4,
+    fontWeight: '500',
+  },
+  infoValue: {
     fontSize: 16,
-    color: '#555',
-    marginBottom: 5,
+    color: '#333',
+    fontWeight: '600',
+    lineHeight: 22,
+  },
+  infoSubValue: {
+    fontSize: 14,
+    color: '#666',
+    marginTop: 2,
+  },
+  actionContainer: {
+    alignItems: 'center',
+  },
+  cancelButton: {
+    backgroundColor: '#E74C3C',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 15,
+    paddingHorizontal: 30,
+    borderRadius: 25,
+    marginBottom: 15,
+    minWidth: 200,
+    shadowColor: '#E74C3C',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  disabledButton: {
+    backgroundColor: '#BDC3C7',
+    shadowOpacity: 0.1,
+  },
+  cancelButtonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginLeft: 8,
+  },
+  helpContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#FFF3CD',
+    padding: 12,
+    borderRadius: 8,
+    borderLeftWidth: 4,
+    borderLeftColor: '#FFC107',
+    maxWidth: '90%',
+  },
+  helpText: {
+    fontSize: 12,
+    color: '#856404',
+    marginLeft: 8,
+    flex: 1,
+    lineHeight: 16,
   },
 });
 
