@@ -17,12 +17,7 @@ export default ({ config }) => ({
     "**/*"
   ],
   ios: {
-    supportsTablet: true,
-    infoPlist: {
-      NSCameraUsageDescription: "This app needs access to your camera for video consultations with users.",
-      NSMicrophoneUsageDescription: "This app needs access to your microphone for voice and video consultations with users.",
-      NSLocalNetworkUsageDescription: "This app needs access to local network for WebRTC connections."
-    }
+    supportsTablet: true
   },
   android: {
     adaptiveIcon: {
@@ -31,13 +26,8 @@ export default ({ config }) => ({
     },
     minSdkVersion: 25,
     permissions: [
-      "CAMERA",
-      "RECORD_AUDIO",
-      "MODIFY_AUDIO_SETTINGS",
       "INTERNET",
       "ACCESS_NETWORK_STATE",
-      "BLUETOOTH",
-      "BLUETOOTH_CONNECT",
       "WAKE_LOCK"
     ],
     package: "com.jyotishcallastrologerapp"

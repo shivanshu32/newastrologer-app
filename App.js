@@ -18,8 +18,7 @@ import * as Sentry from '@sentry/react-native';
 // Import version check hook
 import useVersionCheck from './src/hooks/useVersionCheck';
 
-// Import mock testing utility for Expo Go
-import './src/utils/testMocks';
+
 
 Sentry.init({
   dsn: 'https://3dc6159c27a6738cf8211a0f4dd7e15b@o4509555453067264.ingest.us.sentry.io/4509555454509056',

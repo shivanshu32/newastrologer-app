@@ -202,15 +202,12 @@ const WaitingRoomScreen = () => {
         // Both user and astrologer will receive actual phone calls
         console.log('✅ [ASTROLOGER-APP] Exotel voice call flow initiated');
       } else if (isVideoCall) {
-        console.log('✅ [ASTROLOGER-APP] Navigating to video consultation');
-        navigation.navigate('BookingsVideoCall', {
-          booking: bookingDetails,
-          bookingId: bookingId,
-          roomId: data.roomId,
-          sessionId: data.sessionId,
-          userJoinData: data // Pass the user join data to VideoCallScreen as well
-        });
-        console.log('✅ [ASTROLOGER-APP] VideoCall navigation initiated successfully');
+        console.log('✅ [ASTROLOGER-APP] Video consultation - feature unavailable');
+        Alert.alert(
+          'Video Call Feature Unavailable',
+          'Video calling is currently not available. Please use chat or voice call instead.',
+          [{ text: 'OK', style: 'default' }]
+        );
       } else {
         console.log('✅ [ASTROLOGER-APP] Navigating to enhanced chat consultation');
         console.log('✅ [ASTROLOGER-APP] Navigation params with complete booking details:', {

@@ -65,17 +65,18 @@ export const AuthProvider = ({ children }) => {
       // Call backend API to request OTP using the centralized API service
       console.log('Calling authAPI.requestOtp with phone number:', phoneNumber);
       const response = await authAPI.requestOtp(phoneNumber);
-      console.log('OTP request response received:', response.data);
+      console.log('OTP request response received:', response);
       
-      if (!response.data.success) {
-        console.log('OTP request unsuccessful:', response.data.message);
-        throw new Error(response.data.message || 'Failed to send OTP');
+      // Check if response has expected fields and SMS was sent successfully
+      if (!response.success || !response.data || response.data.smsStatus !== 'sent') {
+        console.log('OTP request unsuccessful - invalid response structure or SMS failed');
+        throw new Error('Failed to send OTP');
       }
       
       // OTP sent via SMS - no longer displayed in app for security
       console.log('OTP request successful');
       setIsLoading(false);
-      return { success: true, message: response.data.message || 'OTP sent successfully to your mobile number' };
+      return { success: true, message: 'OTP sent successfully to your mobile number' };
     } catch (error) {
       console.log('Error requesting OTP:', error);
       console.log('Error details:', error.message);
@@ -98,17 +99,18 @@ export const AuthProvider = ({ children }) => {
       // Call backend API to verify OTP using the centralized API service
       console.log('Calling authAPI.verifyOtp with phone number:', phoneNumber, 'and OTP code:', otp);
       const response = await authAPI.verifyOtp(phoneNumber, otp);
-      console.log('OTP verification response received:', response.data);
+      console.log('OTP verification response received:', response);
       
-      if (!response.data.success) {
-        console.log('OTP verification unsuccessful:', response.data.message);
-        throw new Error(response.data.message || 'Failed to verify OTP');
+      // Check if response has expected fields (success, data with token and astrologer)
+      if (!response.success || !response.data || !response.data.token || !response.data.astrologer) {
+        console.log('OTP verification unsuccessful - invalid response structure');
+        throw new Error('Failed to verify OTP');
       }
       
       console.log('OTP verification successful, storing token and user data');
       // Get user data and token from response
-      const userData = response.data.data.astrologer;
-      const authToken = response.data.data.token;
+      const userData = response.data.astrologer;
+      const authToken = response.data.token;
       
       // Add role field for astrologer app
       userData.role = 'astrologer';

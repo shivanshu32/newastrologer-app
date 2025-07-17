@@ -31,7 +31,7 @@ extensions.configure(com.facebook.react.ReactSettingsExtension) { ex ->
 }
 expoAutolinking.useExpoModules()
 
-rootProject.name = 'JyotishCall Astrologer'
+rootProject.name = 'com.jyotishcallastrologerapp'
 
 expoAutolinking.useExpoVersionCatalog()
 

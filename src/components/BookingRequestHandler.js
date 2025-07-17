@@ -458,25 +458,21 @@ const BookingRequestHandler = () => {
       try {
         // Navigate to appropriate session screen based on consultation type
         if (data.consultationType === 'video') {
-          console.log(' [DEBUG] Navigating to VideoConsultation screen');
-          navigation.navigate('BookingsVideoCall', {
-            bookingId: data.bookingId,
-            sessionId: data.sessionId,
-            roomId: data.roomId,
-            consultationType: 'video',
-            astrologerId: data.astrologerId,
-            bookingDetails: bookingDetails
-          });
+          console.log(' [DEBUG] Video consultation - feature unavailable');
+          Alert.alert(
+            'Video Call Feature Unavailable',
+            'Video calling is currently not available. Please use chat or voice call instead.',
+            [{ text: 'OK', style: 'default' }]
+          );
         } else if (data.consultationType === 'voice') {
-          console.log(' [DEBUG] Navigating to VoiceCall screen');
-          navigation.navigate('BookingsVoiceCall', {
-            bookingId: data.bookingId,
-            sessionId: data.sessionId,
-            roomId: data.roomId,
-            consultationType: 'voice',
-            astrologerId: data.astrologerId,
-            bookingDetails: bookingDetails
-          });
+          console.log(' [DEBUG] Voice consultation - triggering Exotel call');
+          // For voice calls, trigger Exotel call directly
+          // The call will be handled by the backend/Exotel system
+          Alert.alert(
+            'Voice Call Accepted! 📞',
+            'You will receive a phone call shortly from our system. Please answer the call to connect with the user.',
+            [{ text: 'OK', style: 'default' }]
+          );
         } else if (data.consultationType === 'chat') {
           console.log(' [DEBUG] Chat consultation detected - WaitingRoomScreen will handle navigation');
           console.log(' [DEBUG] Skipping navigation from BookingRequestHandler to prevent conflict');

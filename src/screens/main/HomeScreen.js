@@ -14,10 +14,13 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import * as Sentry from '@sentry/react-native';
 import { useAuth } from '../../context/AuthContext';
-import { bookingsAPI, walletAPI, sessionsAPI } from '../../services/api';
+import { bookingsAPI, walletAPI, sessionsAPI, versionAPI } from '../../services/api';
 import { respondToBookingRequest, getPendingBookings, listenForPendingBookingUpdates } from '../../services/socketService';
 import { SocketContext } from '../../context/SocketContext';
 import { useFocusEffect } from '@react-navigation/native';
+
+// Hardcoded app version - update this when releasing new versions
+const APP_VERSION = '2.0.0';
 
 const HomeScreen = ({ navigation }) => {
   const [pendingBookings, setPendingBookings] = useState([]);
@@ -51,7 +54,55 @@ const HomeScreen = ({ navigation }) => {
     }
   };
   
+  // Check app version and redirect to update screen if needed
+  const checkAppVersion = async () => {
+    try {
+      console.log('🔄 Checking astrologer app version...', APP_VERSION);
+      const response = await versionAPI.checkVersion(APP_VERSION);
+      console.log('📱 Version check response:', response);
+      
+      if (response.success) {
+        const { latestVersion, updateRequired } = response;
+        
+        if (updateRequired) {
+          console.log('🚨 Update required! Current:', APP_VERSION, 'Latest:', latestVersion);
+          // Navigate to update screen and prevent going back
+          navigation.reset({
+            index: 0,
+            routes: [{
+              name: 'UpdateScreen',
+              params: {
+                currentVersion: APP_VERSION,
+                latestVersion: latestVersion
+              }
+            }]
+          });
+          return false; // Indicate update is required
+        } else {
+          console.log('✅ Astrologer app version is up to date');
+          return true; // Indicate app is up to date
+        }
+      } else {
+        console.warn('⚠️ Version check failed, allowing app to continue');
+        return true; // Allow app to continue if version check fails
+      }
+    } catch (error) {
+      console.error('❌ Error checking astrologer app version:', error);
+      // Don't block app if version check fails
+      return true;
+    }
+  };
+  
   useEffect(() => {
+    // Check app version first
+    checkAppVersion().then(canContinue => {
+      if (!canContinue) {
+        console.log('🚨 App update required, stopping initialization');
+        return;
+      }
+      
+      console.log('✅ Version check passed, loading app data...');
+      // Continue with normal app initialization
     fetchPendingBookings();
     fetchWalletBalance();
     
@@ -164,6 +215,7 @@ const HomeScreen = ({ navigation }) => {
     return () => {
       // No cleanup needed when socket not connected
     };
+    }); // Close the checkAppVersion().then() block
   }, [socket, isConnected]);
   
   // Refresh wallet balance when screen is focused
@@ -484,9 +536,17 @@ const HomeScreen = ({ navigation }) => {
     if (item.type === 'chat') {
       navigation.navigate('HomeChat', { bookingId: item.id, sessionId: item.sessionId });
     } else if (item.type === 'video') {
-      navigation.navigate('HomeVideoCall', { bookingId: item.id, sessionId: item.sessionId });
+      Alert.alert(
+        'Video Call Feature Unavailable',
+        'Video calling is currently not available. Please use chat or voice call instead.',
+        [{ text: 'OK', style: 'default' }]
+      );
     } else if (item.type === 'voice') {
-      navigation.navigate('HomeVoiceCall', { bookingId: item.id, sessionId: item.sessionId });
+      Alert.alert(
+        'Voice Call Starting! 📞',
+        'You will receive a phone call shortly from our system. Please answer the call to connect with the user.',
+        [{ text: 'OK', style: 'default' }]
+      );
     }
   };
 

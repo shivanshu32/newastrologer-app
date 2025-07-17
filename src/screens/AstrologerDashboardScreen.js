@@ -16,10 +16,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSocket } from '../context/SocketContext';
 import BookingRequestHandler from '../components/BookingRequestHandler';
 import { getPendingBookings, listenForPendingBookingUpdates } from '../services/socketService';
-import { getVectorIconsImport } from '../config/expoConfig';
+import { MaterialIcons } from '@expo/vector-icons';
 
-// Conditional import for Expo Go compatibility
-const Icon = getVectorIconsImport('MaterialIcons');
+// Direct import for MaterialIcons
+const Icon = MaterialIcons;
 
 /**
  * Main dashboard screen for astrologers

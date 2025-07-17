@@ -28,6 +28,17 @@ API.interceptors.request.use(
   }
 );
 
+// Add response interceptor to extract data
+API.interceptors.response.use(
+  (response) => {
+    return response.data; // Return only the data part
+  },
+  (error) => {
+    console.error('API Error:', error.response?.data || error.message);
+    return Promise.reject(error);
+  }
+);
+
 // Auth API
 export const authAPI = {
   requestOtp: (phoneNumber) => API.post('/auth/request-otp', { mobile: phoneNumber, role: 'astrologer' }),
@@ -67,6 +78,15 @@ export const earningsAPI = {
 // Wallet API
 export const walletAPI = {
   getBalance: () => API.get('/wallet/balance'),
+};
+
+// Version API
+export const versionAPI = {
+  checkVersion: (currentVersion) => API.post('/version/check', {
+    currentVersion,
+    appType: 'astrologer',
+    platform: 'android'
+  }),
 };
 
 export default API;

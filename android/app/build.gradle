@@ -87,7 +87,7 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.jyotishcall.astrologer'
+    namespace 'com.jyotishcallastrologerapp'
     defaultConfig {
         applicationId 'com.jyotishcallastrologerapp'
         minSdkVersion rootProject.ext.minSdkVersion
