@@ -439,7 +439,7 @@ const ChatScreen = ({ route, navigation }) => {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#8A2BE2" />
+        <ActivityIndicator size="large" color="#F97316" />
         <Text style={styles.loadingText}>Loading chat session...</Text>
       </View>
     );
@@ -555,7 +555,7 @@ const styles = StyleSheet.create({
     color: '#666',
   },
   header: {
-    backgroundColor: '#8A2BE2',
+    backgroundColor: '#F97316',
     paddingTop: 50,
     paddingBottom: 15,
   },
@@ -627,9 +627,9 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   astrologerMessageBubble: {
-    backgroundColor: '#8A2BE2',
+    backgroundColor: '#F97316',
     borderBottomRightRadius: 4,
-    shadowColor: '#8A2BE2',
+    shadowColor: '#F97316',
     shadowOffset: { width: 0, height: 1 },
     shadowOpacity: 0.2,
     shadowRadius: 2,
@@ -709,11 +709,11 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#8A2BE2',
+    backgroundColor: '#F97316',
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 10,
-    shadowColor: '#8A2BE2',
+    shadowColor: '#F97316',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 2,

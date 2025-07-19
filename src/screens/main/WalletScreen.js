@@ -363,7 +363,7 @@ const WalletScreen = () => {
         <Text style={styles.sectionTitle}>Transaction History</Text>
         
         {loading ? (
-          <ActivityIndicator style={styles.loader} size="large" color="#8A2BE2" />
+          <ActivityIndicator style={styles.loader} size="large" color="#F97316" />
         ) : (
           <FlatList
             data={transactions}
@@ -391,7 +391,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8f8f8',
   },
   header: {
-    backgroundColor: '#8A2BE2',
+    backgroundColor: '#F97316',
     paddingTop: 50,
     paddingBottom: 20,
     paddingHorizontal: 20,
@@ -425,7 +425,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   withdrawButton: {
-    backgroundColor: '#8A2BE2',
+    backgroundColor: '#F97316',
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 8,
@@ -452,14 +452,14 @@ const styles = StyleSheet.create({
   },
   activeTab: {
     borderBottomWidth: 2,
-    borderBottomColor: '#8A2BE2',
+    borderBottomColor: '#F97316',
   },
   tabText: {
     fontSize: 14,
     color: '#666',
   },
   activeTabText: {
-    color: '#8A2BE2',
+    color: '#F97316',
     fontWeight: 'bold',
   },
   transactionsContainer: {

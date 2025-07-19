@@ -27,7 +27,7 @@ export const navigationConfig = {
         border: '#d0d0d0',
         card: '#ffffff',
         notification: '#ff3b30',
-        primary: '#8A2BE2',
+        primary: '#F97316',
         text: '#000000',
       },
     },

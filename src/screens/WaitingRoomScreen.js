@@ -439,7 +439,7 @@ const WaitingRoomScreen = () => {
       {/* Header Section */}
       <View style={styles.headerContainer}>
         <View style={styles.iconContainer}>
-          <Ionicons name="hourglass-outline" size={60} color="#8A2BE2" />
+          <Ionicons name="hourglass-outline" size={60} color="#F97316" />
         </View>
         <Text style={styles.title}>Waiting for User to Join</Text>
         <Text style={styles.subtitle}>You'll be connected automatically when they join</Text>
@@ -447,14 +447,14 @@ const WaitingRoomScreen = () => {
 
       {/* Waiting Timer */}
       <View style={styles.waitingContainer}>
-        <ActivityIndicator size="large" color="#8A2BE2" />
+        <ActivityIndicator size="large" color="#F97316" />
         <Text style={styles.waitingText}>Waiting: {formatTime(waitingTime)}</Text>
       </View>
 
       {/* Enhanced Booking Information */}
       <View style={styles.bookingInfoContainer}>
         <View style={styles.bookingHeader}>
-          <Ionicons name="document-text" size={24} color="#8A2BE2" />
+          <Ionicons name="document-text" size={24} color="#F97316" />
           <Text style={styles.bookingInfoTitle}>Booking Details</Text>
         </View>
 
@@ -588,7 +588,7 @@ const styles = StyleSheet.create({
   },
   iconContainer: {
     marginBottom: 15,
-    backgroundColor: '#F0E6FF',
+    backgroundColor: '#FEF3E2',
     padding: 20,
     borderRadius: 50,
   },
@@ -609,11 +609,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 30,
-    backgroundColor: '#F0E6FF',
+    backgroundColor: '#FEF3E2',
     padding: 20,
     borderRadius: 15,
     justifyContent: 'center',
-    shadowColor: '#8A2BE2',
+    shadowColor: '#F97316',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
@@ -622,7 +622,7 @@ const styles = StyleSheet.create({
   waitingText: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#8A2BE2',
+    color: '#F97316',
     marginLeft: 15,
   },
   bookingInfoContainer: {

@@ -72,7 +72,7 @@ const ProfileScreen = () => {
   const renderMenuItem = (icon, title, onPress, showArrow = true, rightElement = null) => (
     <TouchableOpacity style={styles.menuItem} onPress={onPress}>
       <View style={styles.menuItemLeft}>
-        <Ionicons name={icon} size={22} color="#8A2BE2" style={styles.menuIcon} />
+        <Ionicons name={icon} size={22} color="#F97316" style={styles.menuIcon} />
         <Text style={styles.menuText}>{title}</Text>
       </View>
       {rightElement || (showArrow && <Ionicons name="chevron-forward" size={20} color="#ccc" />)}
@@ -135,16 +135,16 @@ const ProfileScreen = () => {
           </View>
         </View>
         
-        <View style={styles.sectionTitle}>
-          <Text style={styles.sectionTitleText}>Account Settings</Text>
-        </View>
-        
-        <View style={styles.menuCard}>
-          {renderMenuItem('person-outline', 'Edit Profile', showComingSoonAlert)}
-          {renderMenuItem('help-circle-outline', 'Help & Support', showComingSoonAlert)}
-          {renderMenuItem('document-text-outline', 'Terms of Service', showComingSoonAlert)}
-          {renderMenuItem('shield-outline', 'Privacy Policy', showComingSoonAlert)}
-          {renderMenuItem('log-out-outline', 'Logout', () => setShowLogoutConfirm(true), false)}
+        {/* Logout Button */}
+        <View style={styles.logoutSection}>
+          <TouchableOpacity
+            style={styles.logoutButtonContainer}
+            onPress={() => setShowLogoutConfirm(true)}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="log-out-outline" size={24} color="#FF4444" />
+            <Text style={styles.logoutButtonText}>Logout</Text>
+          </TouchableOpacity>
         </View>
         
         <View style={styles.versionContainer}>
@@ -177,7 +177,7 @@ const ProfileScreen = () => {
                 {loading ? (
                   <ActivityIndicator size="small" color="#fff" />
                 ) : (
-                  <Text style={styles.logoutButtonText}>Logout</Text>
+                  <Text style={styles.modalLogoutButtonText}>Logout</Text>
                 )}
               </TouchableOpacity>
             </View>
@@ -194,7 +194,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8f8f8',
   },
   header: {
-    backgroundColor: '#8A2BE2',
+    backgroundColor: '#F97316',
     paddingTop: 50,
     paddingBottom: 20,
     paddingHorizontal: 20,
@@ -387,11 +387,42 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   logoutButton: {
-    backgroundColor: '#8A2BE2',
+    backgroundColor: '#F97316',
   },
-  logoutButtonText: {
+  modalLogoutButtonText: {
     color: '#fff',
     fontWeight: 'bold',
+  },
+  // Logout section styles
+  logoutSection: {
+    marginTop: 30,
+    marginBottom: 20,
+    paddingHorizontal: 20,
+  },
+  logoutButtonContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FF4444',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  logoutButtonText: {
+    color: '#FF4444',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 10,
   },
 });
 

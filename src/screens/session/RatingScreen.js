@@ -151,7 +151,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8f8f8',
   },
   header: {
-    backgroundColor: '#8A2BE2',
+    backgroundColor: '#F97316',
     paddingTop: 50,
     paddingBottom: 20,
     paddingHorizontal: 20,
@@ -230,7 +230,7 @@ const styles = StyleSheet.create({
   ratingLabel: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#8A2BE2',
+    color: '#F97316',
     marginTop: 10,
     marginBottom: 20,
   },
@@ -240,7 +240,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   submitButton: {
-    backgroundColor: '#8A2BE2',
+    backgroundColor: '#F97316',
     paddingVertical: 15,
     borderRadius: 8,
     alignItems: 'center',

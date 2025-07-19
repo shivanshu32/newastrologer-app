@@ -198,7 +198,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
   },
   button: {
-    backgroundColor: '#8A2BE2',
+    backgroundColor: '#F97316',
     paddingVertical: 15,
     paddingHorizontal: 30,
     borderRadius: 8,
@@ -222,7 +222,7 @@ const styles = StyleSheet.create({
     color: '#666',
   },
   resendButton: {
-    color: '#8A2BE2',
+    color: '#F97316',
     fontWeight: 'bold',
   },
   timer: {

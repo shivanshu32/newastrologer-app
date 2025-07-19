@@ -2,7 +2,7 @@ import React, { useContext, useState, useEffect } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
-import { View, Text } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { SocketContext } from '../context/SocketContext';
 import navigationConfig from './NavigationConfig';
@@ -63,13 +63,11 @@ const HomeStack = ({ navigation, route }) => {
       }}
     >
       <Stack.Screen name="HomeMain" component={HomeScreen} />
-      <Stack.Screen name="HomeChat" component={ChatScreen} />
-      <Stack.Screen name="HomeEnhancedChat" component={EnhancedChatScreen} />
-
-
-      <Stack.Screen name="HomeRating" component={RatingScreen} />
-      <Stack.Screen name="Availability" component={AvailabilityScreen} />
-      <Stack.Screen name="UpdateScreen" component={UpdateScreen} />
+      <Stack.Screen name="HomeChat" component={ChatScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="HomeEnhancedChat" component={EnhancedChatScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="HomeRating" component={RatingScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="Availability" component={AvailabilityScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="UpdateScreen" component={UpdateScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 };
@@ -140,7 +138,7 @@ const MainNavigator = () => {
 
             return <Ionicons name={iconName} size={size} color={color} />;
           },
-          tabBarActiveTintColor: '#8A2BE2',
+          tabBarActiveTintColor: '#F97316',
           tabBarInactiveTintColor: 'gray',
           tabBarStyle: {
             ...navigationConfig.tab.screenOptions.tabBarStyle,

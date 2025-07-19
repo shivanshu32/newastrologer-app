@@ -145,12 +145,12 @@ const AvailabilityScreen = ({ navigation }) => {
           </View>
           <View style={styles.toggleSwitchContainer}>
             {isUpdating ? (
-              <ActivityIndicator size="small" color="#8A2BE2" style={styles.toggleLoader} />
+              <ActivityIndicator size="small" color="#F97316" style={styles.toggleLoader} />
             ) : (
               <Switch
                 value={value}
                 onValueChange={onToggle}
-                trackColor={{ false: '#E5E5E5', true: '#8A2BE2' }}
+                trackColor={{ false: '#E5E5E5', true: '#F97316' }}
                 thumbColor={value ? '#FFFFFF' : '#FFFFFF'}
                 ios_backgroundColor="#E5E5E5"
                 disabled={isUpdating}
@@ -188,7 +188,7 @@ const AvailabilityScreen = ({ navigation }) => {
       
       {loading ? (
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#8A2BE2" />
+          <ActivityIndicator size="large" color="#F97316" />
           <Text style={styles.loadingText}>Loading availability...</Text>
         </View>
       ) : (
@@ -219,7 +219,7 @@ const AvailabilityScreen = ({ navigation }) => {
           
           <View style={styles.infoContainer}>
             <View style={styles.infoHeader}>
-              <Ionicons name="information-circle" size={20} color="#8A2BE2" />
+              <Ionicons name="information-circle" size={20} color="#F97316" />
               <Text style={styles.infoTitle}>How it works</Text>
             </View>
             <Text style={styles.infoText}>
@@ -241,7 +241,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#f8f8f8',
   },
   header: {
-    backgroundColor: '#8A2BE2',
+    backgroundColor: '#F97316',
     paddingTop: 50,
     paddingBottom: 20,
     paddingHorizontal: 20,
@@ -338,7 +338,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 20,
     borderLeftWidth: 4,
-    borderLeftColor: '#8A2BE2',
+    borderLeftColor: '#F97316',
   },
   infoHeader: {
     flexDirection: 'row',
@@ -348,7 +348,7 @@ const styles = StyleSheet.create({
   infoTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#8A2BE2',
+    color: '#F97316',
     marginLeft: 8,
   },
   infoText: {

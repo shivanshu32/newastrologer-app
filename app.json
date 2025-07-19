@@ -28,10 +28,7 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.jyotishcallastrologerapp",
-      "minSdkVersion": 25,
       "permissions": [
-        "CAMERA",
-        "RECORD_AUDIO",
         "MODIFY_AUDIO_SETTINGS",
         "INTERNET",
         "ACCESS_NETWORK_STATE"
@@ -65,14 +62,8 @@
           "organization": "jyotishcall"
         }
       ],
-      [
-        "@config-plugins/react-native-webrtc",
-        {
-          "cameraPermission": "Allow Jyotish Call to access your camera for video consultations with users",
-          "microphonePermission": "Allow Jyotish Call to access your microphone for voice consultations with users"
-        }
-      ],
-      "./plugins/withCustomGradle"
+      "./plugins/withCustomGradle",
+      "./plugins/withAdIdPermission"
     ],
     "extra": {
       "eas": {

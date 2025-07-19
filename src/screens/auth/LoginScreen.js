@@ -125,7 +125,7 @@ const styles = StyleSheet.create({
   appName: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#8A2BE2',
+    color: '#F97316',
   },
   appTagline: {
     fontSize: 16,
@@ -171,7 +171,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   button: {
-    backgroundColor: '#8A2BE2',
+    backgroundColor: '#F97316',
     paddingVertical: 15,
     borderRadius: 8,
     alignItems: 'center',

@@ -58,7 +58,7 @@ const UpdateRequiredScreen = ({ route }) => {
       <View style={styles.content}>
         {/* App Icon/Logo */}
         <View style={styles.iconContainer}>
-          <Ionicons name="refresh-circle" size={120} color="#8A2BE2" />
+          <Ionicons name="refresh-circle" size={120} color="#F97316" />
         </View>
 
         {/* Title */}
@@ -167,7 +167,7 @@ const styles = StyleSheet.create({
   },
   versionValueLatest: {
     fontSize: 16,
-    color: '#8A2BE2',
+    color: '#F97316',
     fontWeight: '700',
   },
   message: {
@@ -198,7 +198,7 @@ const styles = StyleSheet.create({
     marginLeft: 12,
   },
   updateButton: {
-    backgroundColor: '#8A2BE2',
+    backgroundColor: '#F97316',
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -207,7 +207,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     width: '100%',
     marginBottom: 24,
-    shadowColor: '#8A2BE2',
+    shadowColor: '#F97316',
     shadowOffset: {
       width: 0,
       height: 4,

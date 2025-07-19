@@ -4,6 +4,9 @@ import { Platform } from 'react-native';
 import { useAuth } from './AuthContext';
 import axios from 'axios';
 
+// API URL Configuration
+const API_URL = 'https://jyotishcallbackend-2uxrv.ondigitalocean.app/api/v1';
+
 // Conditionally import notifications to avoid warnings in Expo Go with SDK 53
 let Notifications;
 let Device;
@@ -124,13 +127,18 @@ export const NotificationProvider = ({ children }) => {
   // Register token with backend
   const registerTokenWithBackend = async (token) => {
     try {
-      // In a real app, this would call your backend API
-      // await axios.post('http://your-backend-url.com/api/v1/astrologer/register-device-token', {
-      //   deviceToken: token,
-      // });
-      console.log('Device token registered with backend:', token);
+      const response = await axios.post(`${API_URL}/notifications/register-token`, {
+        fcmToken: token,
+      }, {
+        headers: {
+          'Authorization': `Bearer ${userToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      console.log('✅ Device token registered with backend:', token);
+      console.log('✅ Backend response:', response.data);
     } catch (error) {
-      console.log('Error registering device token:', error);
+      console.error('❌ Error registering device token:', error.response?.data || error.message);
     }
   };
 
@@ -199,7 +207,7 @@ async function registerForPushNotificationsAsync() {
             name: 'default',
             importance: Notifications.AndroidImportance.MAX,
             vibrationPattern: [0, 250, 250, 250],
-            lightColor: '#8A2BE2',
+            lightColor: '#F97316',
           });
         }
       } catch (error) {

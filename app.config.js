@@ -24,7 +24,6 @@ export default ({ config }) => ({
       foregroundImage: "./assets/adaptive-icon.png",
       backgroundColor: "#FFFFFF"
     },
-    minSdkVersion: 25,
     permissions: [
       "INTERNET",
       "ACCESS_NETWORK_STATE",
@@ -43,13 +42,7 @@ export default ({ config }) => ({
         "addGeneratedScheme": false
       }
     ],
-    [
-      "@config-plugins/react-native-webrtc",
-      {
-        "cameraPermission": "This app needs access to your camera for video consultations with users.",
-        "microphonePermission": "This app needs access to your microphone for voice and video consultations with users."
-      }
-    ]
+    "./plugins/withAdIdPermission"
   ],
   extra: {
     eas: {
