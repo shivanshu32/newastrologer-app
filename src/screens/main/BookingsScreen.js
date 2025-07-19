@@ -9,6 +9,7 @@ import {
   Image,
   Alert,
   RefreshControl,
+  SafeAreaView,
 } from 'react-native';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { useFocusEffect } from '@react-navigation/native';
@@ -485,7 +486,8 @@ const BookingsScreen = ({ navigation }) => {
   const filteredBookings = getFilteredBookings();
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.safeArea}>
+      <View style={styles.container}>
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity 
@@ -562,11 +564,16 @@ const BookingsScreen = ({ navigation }) => {
           }
         />
       )}
-    </View>
+      </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#673AB7',
+  },
   container: {
     flex: 1,
     backgroundColor: '#f8f8f8',

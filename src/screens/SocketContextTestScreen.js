@@ -1,5 +1,5 @@
 import React, { useContext } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView } from 'react-native';
 import { SocketContext } from '../context/SocketContext';
 
 const SocketContextTestScreen = ({ route, navigation }) => {
@@ -11,7 +11,8 @@ const SocketContextTestScreen = ({ route, navigation }) => {
   console.log('[ASTROLOGER-APP] Socket available:', !!socket);
   
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.safeArea}>
+      <View style={styles.container}>
       <Text style={styles.text}>Socket Context Test Screen</Text>
       <Text style={styles.text}>Testing ONLY SocketContext</Text>
       <Text style={styles.status}>Socket: {socket ? '✅ Connected' : '❌ Not Connected'}</Text>
@@ -20,11 +21,16 @@ const SocketContextTestScreen = ({ route, navigation }) => {
           Route params received: ✅
         </Text>
       )}
-    </View>
+      </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#000',
+  },
   container: {
     flex: 1,
     justifyContent: 'center',

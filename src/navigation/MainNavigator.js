@@ -23,7 +23,8 @@ import WalletScreen from '../screens/main/WalletScreen';
 import ProfileScreen from '../screens/main/ProfileScreen';
 import ChatScreen from '../screens/session/ChatScreen';
 import EnhancedChatScreen from '../screens/session/EnhancedChatScreen';
-
+import TransactionHistoryScreen from '../screens/main/TransactionHistoryScreen';
+import TransactionDetailScreen from '../screens/main/TransactionDetailScreen';
 
 import RatingScreen from '../screens/session/RatingScreen';
 import AvailabilityScreen from '../screens/main/AvailabilityScreen';
@@ -113,7 +114,7 @@ const BookingsStack = ({ navigation, route }) => {
 };
 
 // Main tab navigator
-const MainNavigator = () => {
+const TabNavigator = () => {
   return (
     <>
       {/* This component will listen for booking requests regardless of which screen is active */}
@@ -153,6 +154,29 @@ const MainNavigator = () => {
         <Tab.Screen name="Profile" component={ProfileScreen} />
       </Tab.Navigator>
     </>
+  );
+};
+
+// Root stack navigator that includes the tab navigator and modal screens
+const MainNavigator = () => {
+  return (
+    <Stack.Navigator
+      screenOptions={{
+        headerShown: false,
+      }}
+    >
+      <Stack.Screen name="Main" component={TabNavigator} />
+      <Stack.Screen 
+        name="TransactionHistory" 
+        component={TransactionHistoryScreen} 
+        options={{ headerShown: true, title: 'Earnings History' }}
+      />
+      <Stack.Screen 
+        name="TransactionDetail" 
+        component={TransactionDetailScreen} 
+        options={{ headerShown: true, title: 'Transaction Details' }}
+      />
+    </Stack.Navigator>
   );
 };
 

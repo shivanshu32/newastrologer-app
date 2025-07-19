@@ -8,7 +8,8 @@ import {
   Alert,
   RefreshControl,
   ActivityIndicator,
-  Switch
+  Switch,
+  SafeAreaView,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import axios from 'axios';
@@ -211,7 +212,8 @@ const AstrologerDashboardScreen = () => {
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.safeArea}>
+      <View style={styles.container}>
       {/* Invisible BookingRequestHandler to listen for real-time booking requests */}
       <BookingRequestHandler />
       
@@ -335,11 +337,16 @@ const AstrologerDashboardScreen = () => {
           )}
         </View>
       </ScrollView>
-    </View>
+      </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#F5F5F5',
+  },
   container: {
     flex: 1,
     backgroundColor: '#F5F5F5',

@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Image,
   Button,
+  SafeAreaView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Sentry from '@sentry/react-native';
@@ -207,6 +208,29 @@ const HomeScreen = ({ navigation }) => {
         fetchPendingBookings();
       });
       
+      // Listen for automatic voice consultation notifications
+      socket.on('voice_consultation_incoming', (data) => {
+        console.log('📢 [VOICE_AUTO] Received automatic voice consultation notification:', data);
+        
+        const { bookingId, user, type, rate, message, autoInitiated } = data;
+        
+        // Show notification alert for automatic voice consultation
+        Alert.alert(
+          '📞 Voice Consultation Incoming',
+          `${message}\n\nUser: ${user.name}\nRate: ₹${rate}/min\n\nThe call will be initiated automatically - no action required from your side.`,
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                console.log('📢 [VOICE_AUTO] Astrologer acknowledged automatic voice consultation');
+                // Refresh pending bookings to show the new consultation
+                fetchPendingBookings();
+              }
+            }
+          ]
+        );
+      });
+      
       // Listen for call status updates
       console.log('🔥 [DEBUG] Setting up call_status_update listener in astrologer-app HomeScreen');
       console.log('🔥 [DEBUG] Socket state in astrologer-app:', {
@@ -284,8 +308,9 @@ const HomeScreen = ({ navigation }) => {
       
       return () => {
         cleanupPendingUpdates();
-        console.log('🧹 [HOME] Cleaning up call_status_update listener');
+        console.log('🧹 [HOME] Cleaning up socket event listeners');
         socket.off('call_status_update');
+        socket.off('voice_consultation_incoming');
       };
     }
     
@@ -817,7 +842,7 @@ const HomeScreen = ({ navigation }) => {
   };
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <View>
@@ -963,7 +988,7 @@ const HomeScreen = ({ navigation }) => {
         </View>
       )}
       {/* <Button title='Try!' onPress={ () => { Sentry.captureException(new Error('First error')) }}/> */}
-    </View>
+    </SafeAreaView>
   );
 };
 

@@ -8,8 +8,10 @@ import {
   ActivityIndicator,
   Alert,
   RefreshControl,
+  SafeAreaView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -24,6 +26,7 @@ const WalletScreen = () => {
   const [activeTab, setActiveTab] = useState('all');
   const { user } = useAuth();
   const { socket } = useSocket();
+  const navigation = useNavigation();
 
   useEffect(() => {
     fetchWalletData();
@@ -304,7 +307,8 @@ const WalletScreen = () => {
   );
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.safeArea}>
+      <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>My Wallet</Text>
       </View>
@@ -360,7 +364,16 @@ const WalletScreen = () => {
       </View>
       
       <View style={styles.transactionsContainer}>
-        <Text style={styles.sectionTitle}>Transaction History</Text>
+        <View style={styles.transactionHeader}>
+          <Text style={styles.sectionTitle}>Transaction History</Text>
+          <TouchableOpacity 
+            style={styles.viewAllButton}
+            onPress={() => navigation.navigate('TransactionHistory')}
+          >
+            <Text style={styles.viewAllText}>View All</Text>
+            <Ionicons name="chevron-forward" size={16} color="#F97316" />
+          </TouchableOpacity>
+        </View>
         
         {loading ? (
           <ActivityIndicator style={styles.loader} size="large" color="#F97316" />
@@ -381,11 +394,16 @@ const WalletScreen = () => {
           />
         )}
       </View>
-    </View>
+      </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#f8f8f8',
+  },
   container: {
     flex: 1,
     backgroundColor: '#f8f8f8',
@@ -540,6 +558,26 @@ const styles = StyleSheet.create({
   statusText: {
     fontSize: 10,
     fontWeight: 'bold',
+  },
+  transactionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+  viewAllButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+    backgroundColor: '#FEF3E2',
+  },
+  viewAllText: {
+    color: '#F97316',
+    fontSize: 14,
+    fontWeight: '600',
+    marginRight: 4,
   },
 });
 

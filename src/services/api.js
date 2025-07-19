@@ -89,4 +89,12 @@ export const versionAPI = {
   }),
 };
 
+// Ledger API
+export const ledgerAPI = {
+  getMyTransactions: (params) => API.get('/ledger/my-transactions', { params }),
+  getBalanceSummary: () => API.get('/ledger/balance-summary'),
+  getLedgerEntry: (entryId) => API.get(`/ledger/entry/${entryId}`),
+  getAstrologerTransactions: (astrologerId, params) => API.get(`/ledger/astrologer/${astrologerId}/transactions`, { params }),
+};
+
 export default API;

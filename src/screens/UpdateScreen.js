@@ -27,37 +27,43 @@ const UpdateScreen = ({ route, navigation }) => {
   }, []);
 
   const handleUpdatePress = () => {
-    const playStoreUrl = 'https://play.google.com/store/apps/details?id=com.jyotishcall.astrologer';
+    const playStoreUrl = 'https://play.google.com/store/apps/details?id=com.jyotishcallastrologerapp';
     const appStoreUrl = 'https://apps.apple.com/app/jyotishcall-astrologer/id123456790';
-    
-    Alert.alert(
-      'Choose App Store',
-      'Select your device platform to update the app',
-      [
-        {
-          text: 'Google Play Store',
-          onPress: () => {
-            Linking.openURL(playStoreUrl).catch(err => {
+
+
+    Linking.openURL(playStoreUrl).catch(err => {
               console.error('Error opening Play Store:', err);
               Alert.alert('Error', 'Could not open Play Store. Please update manually.');
             });
-          },
-        },
-        {
-          text: 'Apple App Store',
-          onPress: () => {
-            Linking.openURL(appStoreUrl).catch(err => {
-              console.error('Error opening App Store:', err);
-              Alert.alert('Error', 'Could not open App Store. Please update manually.');
-            });
-          },
-        },
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-      ]
-    );
+    
+    // Alert.alert(
+    //   'Choose App Store',
+    //   'Select your device platform to update the app',
+    //   [
+    //     {
+    //       text: 'Google Play Store',
+    //       onPress: () => {
+    //         Linking.openURL(playStoreUrl).catch(err => {
+    //           console.error('Error opening Play Store:', err);
+    //           Alert.alert('Error', 'Could not open Play Store. Please update manually.');
+    //         });
+    //       },
+    //     },
+    //     {
+    //       text: 'Apple App Store',
+    //       onPress: () => {
+    //         Linking.openURL(appStoreUrl).catch(err => {
+    //           console.error('Error opening App Store:', err);
+    //           Alert.alert('Error', 'Could not open App Store. Please update manually.');
+    //         });
+    //       },
+    //     },
+    //     {
+    //       text: 'Cancel',
+    //       style: 'cancel',
+    //     },
+    //   ]
+    // );
   };
 
   return (
