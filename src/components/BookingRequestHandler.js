@@ -71,7 +71,8 @@ const BookingRequestHandler = () => {
         user: request.user,
         userInfo: request.userInfo,
         wasQueued: request.wasQueued,
-        queuedAt: request.queuedAt
+        queuedAt: request.queuedAt,
+        isFreeChat: request.isFreeChat || false // Preserve free chat flag
       };
       bookingId = request.bookingId;
     } else {
@@ -108,11 +109,16 @@ const BookingRequestHandler = () => {
       // Add queued booking specific fields
       wasQueued: request.wasQueued || false,
       queuedAt: request.queuedAt,
-      userInfo: request.userInfo || bookingData.userInfo
+      userInfo: request.userInfo || bookingData.userInfo,
+      // CRITICAL: Explicitly preserve free chat flag
+      isFreeChat: request.isFreeChat || bookingData.isFreeChat || false
     };
     
     console.log(' [DEBUG] Structured booking request:', structuredBookingRequest);
     console.log(' [DEBUG] Booking ID available:', structuredBookingRequest._id);
+    console.log('🆓 [FREE_CHAT] isFreeChat flag in structured request:', structuredBookingRequest.isFreeChat);
+    console.log('🆓 [FREE_CHAT] Original request isFreeChat:', request.isFreeChat);
+    console.log('🆓 [FREE_CHAT] BookingData isFreeChat:', bookingData.isFreeChat);
     
     console.log(' [DEBUG] About to set booking request state');
     console.log(' [DEBUG] Current bookingRequest state before update:', bookingRequest);
@@ -157,70 +163,121 @@ const BookingRequestHandler = () => {
 
     try {
       setIsAccepting(true);
-      console.log(' [DEBUG] About to emit booking_response event');
-      console.log(' [DEBUG] Payload:', { bookingId: currentBookingRequest._id, status: 'accepted' });
       
-      socket.emit('booking_response', 
-        { bookingId: currentBookingRequest._id, status: 'accepted' },
-        (response) => {
-          console.log('🔥🔥🔥 [ASTROLOGER-APP] booking_response callback received! 🔥🔥🔥');
-          console.log(' [DEBUG] Raw callback response:', JSON.stringify(response, null, 2));
-          console.log(' [DEBUG] Socket ID:', socket?.id);
-          console.log(' [DEBUG] Socket connected:', socket?.connected);
-          console.log(' [DEBUG] Callback timestamp:', new Date().toISOString());
-          console.log(' [DEBUG] Socket callback received:', response);
-          console.log(' [DEBUG] Response type:', typeof response);
-          console.log(' [DEBUG] Response.success:', response?.success);
-          console.log(' [DEBUG] Navigation object available:', !!navigation);
-          setIsAccepting(false);
-          
-          if (response?.success) {
-            console.log(' [SUCCESS] Booking accepted successfully');
-            setIsPopupVisible(false);
-            setBookingRequest(null);
+      // Handle free chat requests differently
+      if (currentBookingRequest.isFreeChat) {
+        console.log('🆓 [FREE_CHAT] About to emit accept_free_chat event');
+        console.log('🆓 [FREE_CHAT] Payload:', { freeChatId: currentBookingRequest._id });
+        
+        socket.emit('accept_free_chat', 
+          { freeChatId: currentBookingRequest._id },
+          (response) => {
+            console.log('🆓 [FREE_CHAT] accept_free_chat callback received:', response);
+            setIsAccepting(false);
             
-            // Handle different consultation types
-            const consultationType = currentBookingRequest.type;
-            console.log(' [DEBUG] Consultation type:', consultationType);
-            
-            if (consultationType === 'voice') {
-              // For voice consultations, Exotel call should be triggered automatically by backend
-              // Show success message and stay on current screen
-              console.log(' [VOICE] Voice consultation accepted - Exotel call should be triggered by backend');
-              Alert.alert(
-                'Voice Call Accepted', 
-                'The voice consultation has been accepted. The call will be initiated shortly via Exotel. Please wait for the incoming call.',
-                [{ text: 'OK' }]
-              );
+            if (response?.success) {
+              console.log('🆓 [FREE_CHAT] Free chat accepted successfully');
+              setIsPopupVisible(false);
+              setBookingRequest(null);
               
-              // Stay on current screen for voice calls - no navigation needed
-              console.log(' [SUCCESS] Voice consultation accepted - staying on current screen');
-              
-            } else {
-              // For chat and video consultations, use the traditional WaitingRoom flow
-              console.log(' [DEBUG] Non-voice consultation - navigating to WaitingRoom');
-              try {
-                navigation.navigate('Bookings', {
-                  screen: 'WaitingRoom',
-                  params: { 
-                    bookingId: currentBookingRequest._id,
-                    bookingDetails: currentBookingRequest 
+              // Navigate to free chat session
+              console.log('🆓 [FREE_CHAT] Navigating to BookingsEnhancedChat for free chat');
+              navigation.navigate('Bookings', {
+                screen: 'BookingsEnhancedChat',
+                params: {
+                  bookingId: currentBookingRequest._id,
+                  sessionId: response.sessionId || currentBookingRequest.sessionId,
+                  isFreeChat: true,
+                  freeChatId: currentBookingRequest._id,
+                  astrologer: currentBookingRequest.astrologer,
+                  userProfile: currentBookingRequest.userProfile,
+                  bookingDetails: {
+                    ...currentBookingRequest,
+                    id: currentBookingRequest._id,
+                    user: currentBookingRequest.user,
+                    type: 'chat',
+                    rate: 0,
+                    notes: 'Free 3-minute chat consultation',
+                    expiresAt: currentBookingRequest.expiresAt,
+                    createdAt: currentBookingRequest.createdAt,
+                    userInfo: currentBookingRequest.userInfo,
+                    wasQueued: false,
+                    isFreeChat: true
                   }
-                });
-                console.log(' [SUCCESS] Navigation.navigate called successfully');
-              } catch (navError) {
-                console.error(' [ERROR] Navigation failed:', navError);
-                Alert.alert('Navigation Error', 'Failed to navigate to waiting room: ' + navError.message);
-              }
+                }
+              });
+            } else {
+              console.error('🆓 [FREE_CHAT] Backend rejected free chat acceptance:', response);
+              Alert.alert('Error', response?.message || 'Failed to accept free chat');
             }
-          } else {
-            console.error(' [ERROR] Backend rejected acceptance:', response);
-            Alert.alert('DEBUG', 'Socket callback failed: ' + JSON.stringify(response));
           }
-        }
-      );
-      
-      console.log(' [DEBUG] booking_response event emitted successfully');
+        );
+      } else {
+        console.log(' [DEBUG] About to emit booking_response event');
+        console.log(' [DEBUG] Payload:', { bookingId: currentBookingRequest._id, status: 'accepted' });
+        
+        socket.emit('booking_response', 
+          { bookingId: currentBookingRequest._id, status: 'accepted' },
+          (response) => {
+            console.log('🔥🔥🔥 [ASTROLOGER-APP] booking_response callback received! 🔥🔥🔥');
+            console.log(' [DEBUG] Raw callback response:', JSON.stringify(response, null, 2));
+            console.log(' [DEBUG] Socket ID:', socket?.id);
+            console.log(' [DEBUG] Socket connected:', socket?.connected);
+            console.log(' [DEBUG] Callback timestamp:', new Date().toISOString());
+            console.log(' [DEBUG] Socket callback received:', response);
+            console.log(' [DEBUG] Response type:', typeof response);
+            console.log(' [DEBUG] Response.success:', response?.success);
+            console.log(' [DEBUG] Navigation object available:', !!navigation);
+            setIsAccepting(false);
+            
+            if (response?.success) {
+              console.log(' [SUCCESS] Booking accepted successfully');
+              setIsPopupVisible(false);
+              setBookingRequest(null);
+              
+              // Handle different consultation types
+              const consultationType = currentBookingRequest.type;
+              console.log(' [DEBUG] Consultation type:', consultationType);
+              
+              if (consultationType === 'voice') {
+                // For voice consultations, Exotel call should be triggered automatically by backend
+                // Show success message and stay on current screen
+                console.log(' [VOICE] Voice consultation accepted - Exotel call should be triggered by backend');
+                Alert.alert(
+                  'Voice Call Accepted', 
+                  'The voice consultation has been accepted. The call will be initiated shortly via Exotel. Please wait for the incoming call.',
+                  [{ text: 'OK' }]
+                );
+                
+                // Stay on current screen for voice calls - no navigation needed
+                console.log(' [SUCCESS] Voice consultation accepted - staying on current screen');
+                
+              } else {
+                // For chat and video consultations, use the traditional WaitingRoom flow
+                console.log(' [DEBUG] Non-voice consultation - navigating to WaitingRoom');
+                try {
+                  navigation.navigate('Bookings', {
+                    screen: 'WaitingRoom',
+                    params: { 
+                      bookingId: currentBookingRequest._id,
+                      bookingDetails: currentBookingRequest 
+                    }
+                  });
+                  console.log(' [SUCCESS] Navigation.navigate called successfully');
+                } catch (navError) {
+                  console.error(' [ERROR] Navigation failed:', navError);
+                  Alert.alert('Navigation Error', 'Failed to navigate to waiting room: ' + navError.message);
+                }
+              }
+            } else {
+              console.error(' [ERROR] Backend rejected acceptance:', response);
+              Alert.alert('DEBUG', 'Socket callback failed: ' + JSON.stringify(response));
+            }
+          }
+        );
+        
+        console.log(' [DEBUG] booking_response event emitted successfully');
+      }
       
     } catch (error) {
       console.error(' [ERROR] Exception in handleAcceptBooking:', error);
@@ -378,6 +435,42 @@ const BookingRequestHandler = () => {
       }
       
       handleBookingRequest(actualBookingData);
+    });
+
+    // Listen for free chat requests
+    socket.on('free_chat_available', (freeChatData) => {
+      console.log('🆓 [FREE_CHAT] Free chat request received:', freeChatData);
+      console.log('🆓 [FREE_CHAT] Free chat data structure:', Object.keys(freeChatData));
+      
+      // Transform free chat data to booking request format
+      // Use the offline/queued booking structure that the validation expects
+      const freeChatBookingRequest = {
+        bookingId: freeChatData.freeChatId, // Primary ID field for validation
+        _id: freeChatData.freeChatId, // Also include _id for compatibility
+        type: 'chat',
+        user: freeChatData.user?.id || freeChatData.user?._id,
+        userProfile: freeChatData.userProfile,
+        sessionId: freeChatData.sessionId,
+        rate: 0, // Free chat has no cost
+        amount: 0,
+        duration: 3, // 3 minutes
+        notes: 'Free 3-minute chat consultation',
+        message: 'Free 3-minute chat consultation',
+        scheduledAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 300000).toISOString(), // 5 minutes to accept
+        isFreeChat: true, // Flag to identify free chat requests
+        userName: freeChatData.user?.name,
+        userImage: freeChatData.user?.profileImage || 'default-user.png',
+        userInfo: {
+          name: freeChatData.user?.name,
+          mobile: freeChatData.user?.mobile,
+          profileImage: freeChatData.user?.profileImage || 'default-user.png'
+        }
+      };
+      
+      console.log('🆓 [FREE_CHAT] Transformed booking request:', freeChatBookingRequest);
+      handleBookingRequest(freeChatBookingRequest);
     });
 
     // Listen for booking lifecycle events

@@ -26,13 +26,33 @@ const EnhancedChatScreen = ({ route, navigation }) => {
   console.log('🔴 [ASTROLOGER-APP] Route object:', route);
   console.log('🔴 [ASTROLOGER-APP] Route params:', route?.params);
   
-  const { bookingId, astrologerId, sessionId, bookingDetails: routeBookingDetails } = route.params || {};
+  const { 
+    bookingId, 
+    astrologerId, 
+    sessionId, 
+    bookingDetails: routeBookingDetails,
+    // Free chat specific parameters
+    isFreeChat,
+    freeChatId,
+    userInfo: routeUserInfo
+  } = route.params || {};
   
   console.log('🔴 [ASTROLOGER-APP] Extracted params:');
   console.log('🔴 [ASTROLOGER-APP] - bookingId:', bookingId);
   console.log('🔴 [ASTROLOGER-APP] - astrologerId:', astrologerId);
   console.log('🔴 [ASTROLOGER-APP] - sessionId:', sessionId);
   console.log('🔴 [ASTROLOGER-APP] - routeBookingDetails:', routeBookingDetails);
+  console.log('🔴 [ASTROLOGER-APP] - isFreeChat:', isFreeChat);
+  console.log('🔴 [ASTROLOGER-APP] - freeChatId:', freeChatId);
+  console.log('🔴 [ASTROLOGER-APP] - routeUserInfo:', routeUserInfo);
+  
+  // Detect free chat session
+  const isFreeChatSession = isFreeChat || (routeBookingDetails && routeBookingDetails.isFreeChat);
+  const actualFreeChatId = freeChatId || (routeBookingDetails && routeBookingDetails.freeChatId) || (isFreeChatSession ? bookingId : null);
+  
+  console.log('🔴 [ASTROLOGER-APP] Session type detection:');
+  console.log('🔴 [ASTROLOGER-APP] - isFreeChatSession:', isFreeChatSession);
+  console.log('🔴 [ASTROLOGER-APP] - actualFreeChatId:', actualFreeChatId);
   
   // State management
   const [messages, setMessages] = useState([]);
@@ -172,10 +192,23 @@ const EnhancedChatScreen = ({ route, navigation }) => {
         });
         console.log('🔴 [ASTROLOGER-APP] Event listeners set up successfully');
 
-        // Initialize connection
+        // Initialize connection with free chat support
         console.log('🔴 [ASTROLOGER-APP] Initializing ChatConnectionManager...');
-        await chatManagerRef.current.initialize(bookingId, currentAstrologerId);
+        console.log('🔴 [ASTROLOGER-APP] Session type:', isFreeChatSession ? 'FREE CHAT' : 'REGULAR BOOKING');
+        
+        const initOptions = {};
+        if (isFreeChatSession) {
+          initOptions.isFreeChat = true;
+          initOptions.freeChatId = actualFreeChatId;
+          initOptions.sessionId = sessionId;
+          console.log('🔴 [ASTROLOGER-APP] Free chat initialization options:', initOptions);
+        }
+        
+        await chatManagerRef.current.initialize(bookingId, currentAstrologerId, null, initOptions);
         console.log('🔴 [ASTROLOGER-APP] ChatConnectionManager initialized successfully');
+        
+        // Note: Room joining is handled automatically by ChatConnectionManager.handleConnect()
+        console.log('🔴 [ASTROLOGER-APP] Room will be joined automatically when socket connects');
 
         // Start session timer if sessionId is provided
         if (sessionId) {

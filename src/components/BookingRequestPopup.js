@@ -99,6 +99,7 @@ const BookingRequestPopup = ({ visible, bookingRequest, onAccept, onReject, onCl
   const isVideoCall = bookingRequest.type === 'video';
   const isVoiceCall = bookingRequest.type === 'voice';
   const isChatCall = bookingRequest.type === 'chat';
+  const isFreeChat = bookingRequest.isFreeChat || false;
 
   return (
     <Modal
@@ -112,7 +113,14 @@ const BookingRequestPopup = ({ visible, bookingRequest, onAccept, onReject, onCl
           <View style={styles.header}>
             <View style={styles.headerLeft}>
               <Ionicons name="notifications" size={24} color="#4CAF50" />
-              <Text style={styles.headerText}>New Booking Request</Text>
+              <Text style={styles.headerText}>
+                {isFreeChat ? 'Free Chat Request' : 'New Booking Request'}
+              </Text>
+              {isFreeChat && (
+                <View style={styles.freeChatBadge}>
+                  <Text style={styles.freeChatBadgeText}>FREE CHAT</Text>
+                </View>
+              )}
             </View>
             <View style={styles.headerRight}>
               {timeRemaining && !isExpired && (
@@ -163,23 +171,33 @@ const BookingRequestPopup = ({ visible, bookingRequest, onAccept, onReject, onCl
                     <MaterialIcons name="phone" size={18} color="#4CAF50" />
                   )}
                   {isChatCall && (
-                    <MaterialIcons name="chat" size={18} color="#FF9800" />
+                    <MaterialIcons 
+                      name="chat" 
+                      size={18} 
+                      color={isFreeChat ? "#4CAF50" : "#FF9800"} 
+                    />
                   )}
-                  <Text style={styles.typeText}>
-                    {isChatCall ? 'Chat Consultation' : `${formatType(bookingRequest.type)} Call`}
+                  <Text style={[styles.typeText, isFreeChat && styles.freeChatTypeText]}>
+                    {isFreeChat ? 'Free Chat (3 minutes)' : 
+                     isChatCall ? 'Chat Consultation' : `${formatType(bookingRequest.type)} Call`}
                   </Text>
+                  {isFreeChat && (
+                    <View style={styles.freeTag}>
+                      <Text style={styles.freeTagText}>FREE</Text>
+                    </View>
+                  )}
                 </View>
               </View>
             </View>
 
             <View style={styles.bookingDetails}>
-              <View style={styles.detailRow}>
+              {/* <View style={styles.detailRow}>
                 <Ionicons name="calendar-outline" size={18} color="#666" />
                 <Text style={styles.detailLabel}>Scheduled:</Text>
                 <Text style={styles.detailValue}>
                   {formatDateTime(bookingRequest.scheduledAt)}
                 </Text>
-              </View>
+              </View> */}
               
               <View style={styles.detailRow}>
                 <Ionicons name="cash-outline" size={18} color="#666" />
@@ -319,6 +337,19 @@ const styles = StyleSheet.create({
     color: '#333',
     marginLeft: 8,
   },
+  freeChatBadge: {
+    backgroundColor: '#4CAF50',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginLeft: 8,
+  },
+  freeChatBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
   timerContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -390,6 +421,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#666',
     marginLeft: 6,
+  },
+  freeChatTypeText: {
+    color: '#4CAF50',
+    fontWeight: '600',
+  },
+  freeTag: {
+    backgroundColor: '#E8F5E8',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    marginLeft: 8,
+  },
+  freeTagText: {
+    color: '#4CAF50',
+    fontSize: 10,
+    fontWeight: '700',
   },
   bookingDetails: {
     marginBottom: 15,
