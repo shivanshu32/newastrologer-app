@@ -7,26 +7,27 @@ import axios from 'axios';
 // API URL Configuration
 const API_URL = 'https://jyotishcallbackend-2uxrv.ondigitalocean.app/api/v1';
 
-// Conditionally import notifications to avoid warnings in Expo Go with SDK 53
+// Import notifications - prioritize real implementation
 let Notifications;
 let Device;
+let isUsingMockImplementation = false;
 
-// In a development build or production app, we would use the real implementation
-// For Expo Go with SDK 53, we'll use a mock implementation
 try {
-  // This might throw an error in Expo Go with SDK 53
   Notifications = require('expo-notifications');
   Device = require('expo-device');
+  console.log('✅ [FCM] Real expo-notifications loaded successfully');
 } catch (error) {
-  console.log('Using mock notifications for Expo Go compatibility');
-  // Mock implementation for Expo Go
+  console.log('⚠️ [FCM] Failed to load expo-notifications, using mock implementation:', error.message);
+  isUsingMockImplementation = true;
+  
+  // Mock implementation only as fallback
   Notifications = {
     setNotificationHandler: () => {},
     addNotificationReceivedListener: () => ({ remove: () => {} }),
     addNotificationResponseReceivedListener: () => ({ remove: () => {} }),
     getPermissionsAsync: async () => ({ status: 'granted' }),
     requestPermissionsAsync: async () => ({ status: 'granted' }),
-    getExpoPushTokenAsync: async () => ({ data: 'mock-expo-push-token' }),
+    getExpoPushTokenAsync: async () => ({ data: 'mock-expo-push-token-fallback' }),
     scheduleNotificationAsync: async () => {},
     setNotificationChannelAsync: async () => {},
     removeNotificationSubscription: () => {},
@@ -63,11 +64,28 @@ export const NotificationProvider = ({ children }) => {
   const { user, userToken } = useAuth();
 
   useEffect(() => {
-    // Only attempt to set up notifications if we have the real implementation
+    console.log('🚀 [FCM] NotificationProvider useEffect triggered');
+    console.log('🚀 [FCM] userToken present:', !!userToken);
+    console.log('🚀 [FCM] expoPushToken:', expoPushToken);
+    
+    // Always attempt to set up notifications
     if (Notifications && Device) {
+      console.log('🚀 [FCM] Setting up notifications with real implementation');
+      
       try {
         registerForPushNotificationsAsync().then(token => {
-          if (token) setExpoPushToken(token);
+          console.log('🚀 [FCM] Received token from registration:', token);
+          if (token) {
+            setExpoPushToken(token);
+            
+            // Register with backend immediately if user is logged in
+            if (userToken) {
+              console.log('🚀 [FCM] User is logged in, registering token with backend');
+              registerTokenWithBackend(token);
+            }
+          }
+        }).catch(error => {
+          console.log('❌ [FCM] Error in token registration:', error.message);
         });
 
         // Set up notification listeners
@@ -77,13 +95,14 @@ export const NotificationProvider = ({ children }) => {
         try {
           notificationListener = Notifications.addNotificationReceivedListener(
             notification => {
+              console.log('🔔 [FCM] Notification received:', notification);
               setNotification(notification);
             }
           );
 
           responseListener = Notifications.addNotificationResponseReceivedListener(
             response => {
-              console.log('Notification response:', response);
+              console.log('🔔 [FCM] Notification response:', response);
               // Handle notification tap here
               if (response?.notification?.request?.content?.data) {
                 const { data } = response.notification.request.content;
@@ -91,13 +110,10 @@ export const NotificationProvider = ({ children }) => {
               }
             }
           );
+          
+          console.log('✅ [FCM] Notification listeners set up successfully');
         } catch (error) {
-          console.log('Failed to add notification listeners - using mock implementation');
-        }
-
-        // Register token with backend if user is logged in
-        if (userToken && expoPushToken) {
-          registerTokenWithBackend(expoPushToken);
+          console.log('❌ [FCM] Failed to add notification listeners:', error.message);
         }
 
         return () => {
@@ -109,23 +125,31 @@ export const NotificationProvider = ({ children }) => {
               responseListener.remove();
             }
           } catch (error) {
-            console.log('Error removing notification subscriptions');
+            console.log('❌ [FCM] Error removing notification subscriptions:', error.message);
           }
         };
       } catch (error) {
-        console.log('Notification setup failed - using mock implementation');
+        console.log('❌ [FCM] Notification setup failed:', error.message);
       }
     } else {
-      console.log('Notifications not available in this environment (Expo Go SDK 53)');
-      // If we're in Expo Go with SDK 53, set a mock token
-      setExpoPushToken('mock-expo-push-token-for-testing');
+      console.log('⚠️ [FCM] Notifications not available - using mock implementation');
+      // Only use mock token if we're explicitly in mock mode
+      if (isUsingMockImplementation) {
+        setExpoPushToken('mock-expo-push-token-fallback');
+      }
     }
     
     return () => {};
-  }, [userToken, expoPushToken]);
+  }, [userToken]); // Remove expoPushToken from dependencies to avoid infinite loop
 
   // Register token with backend
   const registerTokenWithBackend = async (token) => {
+    console.log('🔄 [FCM] Registering token with backend...');
+    console.log('🔄 [FCM] Token to register:', token);
+    console.log('🔄 [FCM] Token length:', token?.length);
+    console.log('🔄 [FCM] Token starts with mock:', token?.startsWith('mock-'));
+    console.log('🔄 [FCM] UserToken present:', !!userToken);
+    
     try {
       const response = await axios.post(`${API_URL}/notifications/register-token`, {
         fcmToken: token,
@@ -135,10 +159,13 @@ export const NotificationProvider = ({ children }) => {
           'Content-Type': 'application/json'
         }
       });
-      console.log('✅ Device token registered with backend:', token);
-      console.log('✅ Backend response:', response.data);
+      console.log('✅ [FCM] Device token registered with backend successfully');
+      console.log('✅ [FCM] Registered token:', token);
+      console.log('✅ [FCM] Backend response:', response.data);
     } catch (error) {
-      console.error('❌ Error registering device token:', error.response?.data || error.message);
+      console.error('❌ [FCM] Error registering device token:', error.response?.data || error.message);
+      console.error('❌ [FCM] Error status:', error.response?.status);
+      console.error('❌ [FCM] Full error:', error);
     }
   };
 
@@ -191,17 +218,24 @@ export const NotificationProvider = ({ children }) => {
 
 // Register for push notifications
 async function registerForPushNotificationsAsync() {
-  // Check if we have real Notifications implementation
-  if (!Notifications || !Device) {
-    console.log('Using mock push token for Expo Go SDK 53');
-    return 'mock-expo-push-token-for-testing';
+  console.log('🚀 [FCM] Starting FCM token registration...');
+  console.log('🚀 [FCM] Using mock implementation:', isUsingMockImplementation);
+  console.log('🚀 [FCM] Device.isDevice:', Device?.isDevice);
+  console.log('🚀 [FCM] Platform:', Platform.OS);
+  
+  // Only use mock tokens if we're explicitly using mock implementation
+  if (isUsingMockImplementation) {
+    console.log('⚠️ [FCM] Using mock push token due to mock implementation');
+    return 'mock-expo-push-token-fallback';
   }
   
   try {
     let token;
     
+    // Set up Android notification channel
     if (Platform.OS === 'android') {
       try {
+        console.log('📱 [FCM] Setting up Android notification channel...');
         if (typeof Notifications.setNotificationChannelAsync === 'function') {
           await Notifications.setNotificationChannelAsync('default', {
             name: 'default',
@@ -209,56 +243,67 @@ async function registerForPushNotificationsAsync() {
             vibrationPattern: [0, 250, 250, 250],
             lightColor: '#F97316',
           });
+          console.log('✅ [FCM] Android notification channel set up successfully');
         }
       } catch (error) {
-        console.log('Error setting notification channel');
+        console.log('❌ [FCM] Error setting notification channel:', error.message);
       }
     }
 
     if (Device.isDevice) {
+      console.log('📱 [FCM] Running on physical device, requesting permissions...');
+      
       try {
-        if (typeof Notifications.getPermissionsAsync !== 'function') {
-          return 'mock-expo-push-token-for-testing';
-        }
-        
+        // Check permissions
         const { status: existingStatus } = await Notifications.getPermissionsAsync();
+        console.log('🔐 [FCM] Existing permission status:', existingStatus);
         let finalStatus = existingStatus;
         
         if (existingStatus !== 'granted') {
-          if (typeof Notifications.requestPermissionsAsync === 'function') {
-            const { status } = await Notifications.requestPermissionsAsync();
-            finalStatus = status;
-          } else {
-            finalStatus = 'granted'; // Mock granted for Expo Go
-          }
+          console.log('🔐 [FCM] Requesting notification permissions...');
+          const { status } = await Notifications.requestPermissionsAsync();
+          finalStatus = status;
+          console.log('🔐 [FCM] Permission request result:', finalStatus);
         }
         
         if (finalStatus !== 'granted') {
-          console.log('Failed to get push token for push notification!');
+          console.log('❌ [FCM] Notification permissions not granted!');
           return '';
         }
         
-        if (typeof Notifications.getExpoPushTokenAsync !== 'function') {
-          return 'mock-expo-push-token-for-testing';
+        // Get Expo push token
+        console.log('🎫 [FCM] Getting Expo push token...');
+        console.log('🎫 [FCM] Project ID:', Constants.expoConfig?.extra?.eas?.projectId);
+        
+        const tokenResult = await Notifications.getExpoPushTokenAsync({
+          projectId: Constants.expoConfig?.extra?.eas?.projectId,
+        });
+        
+        token = tokenResult.data;
+        console.log('✅ [FCM] Successfully obtained Expo push token:', token);
+        
+        // Validate token format
+        if (token && !token.startsWith('mock-')) {
+          console.log('✅ [FCM] Token appears to be real (not mock)');
+          return token;
+        } else {
+          console.log('⚠️ [FCM] Token appears to be mock or invalid:', token);
+          return token; // Return it anyway for debugging
         }
         
-        token = (await Notifications.getExpoPushTokenAsync({
-          projectId: Constants.expoConfig?.extra?.eas?.projectId,
-        })).data;
-        
-        console.log('Expo push token:', token);
-        return token;
       } catch (error) {
-        console.log('Error getting push token - using mock token');
-        return 'mock-expo-push-token-for-testing';
+        console.log('❌ [FCM] Error getting push token:', error.message);
+        console.log('❌ [FCM] Error stack:', error.stack);
+        return '';
       }
     } else {
-      console.log('Must use physical device for push notifications');
+      console.log('❌ [FCM] Not running on physical device - push notifications not available');
       return '';
     }
   } catch (error) {
-    console.log('Error in registerForPushNotificationsAsync - using mock token');
-    return 'mock-expo-push-token-for-testing';
+    console.log('❌ [FCM] Critical error in registerForPushNotificationsAsync:', error.message);
+    console.log('❌ [FCM] Error stack:', error.stack);
+    return '';
   }
 }
 
