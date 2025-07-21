@@ -29,6 +29,8 @@ class ChatConnectionManager {
     this.isFreeChat = false;
     this.freeChatId = null;
     this.sessionId = null;
+    this.sessionStartTime = null;
+    this.sessionDuration = 180; // Default 3 minutes for free chat
     
     // Bind methods
     this.handleAppStateChange = this.handleAppStateChange.bind(this);
@@ -39,6 +41,107 @@ class ChatConnectionManager {
     
     // Listen for app state changes
     this.appStateSubscription = AppState.addEventListener('change', this.handleAppStateChange);
+  }
+
+  /**
+   * Handle app state changes to maintain timer continuity
+   */
+  handleAppStateChange(nextAppState) {
+    console.log('[ChatConnectionManager] App state changed:', this.appState, '->', nextAppState);
+    
+    const previousAppState = this.appState;
+    this.appState = nextAppState;
+    
+    if (previousAppState === 'background' && nextAppState === 'active') {
+      console.log('[ChatConnectionManager] App returned to foreground - checking session state');
+      this.handleAppForeground();
+    } else if (nextAppState === 'background') {
+      console.log('[ChatConnectionManager] App went to background - preserving session state');
+      this.handleAppBackground();
+    }
+  }
+
+  /**
+   * Handle app coming to foreground
+   */
+  async handleAppForeground() {
+    try {
+      console.log('[ChatConnectionManager] Handling app foreground transition');
+      
+      // Check if we have an active session
+      if (this.currentBookingId && this.isConnected) {
+        console.log('[ChatConnectionManager] Active session detected, requesting timer sync');
+        
+        // Request current session state from backend
+        if (this.socket && this.socket.connected) {
+          this.socket.emit('request_session_state', {
+            bookingId: this.currentBookingId,
+            sessionId: this.sessionId,
+            isFreeChat: this.isFreeChat,
+            freeChatId: this.freeChatId
+          });
+        }
+        
+        // Rejoin room if needed
+        await this.rejoinRoomIfNeeded();
+      }
+    } catch (error) {
+      console.error('[ChatConnectionManager] Error handling app foreground:', error);
+    }
+  }
+
+  /**
+   * Handle app going to background
+   */
+  handleAppBackground() {
+    console.log('[ChatConnectionManager] Handling app background transition');
+    
+    // Store current session state
+    if (this.currentBookingId) {
+      this.preservedState = {
+        bookingId: this.currentBookingId,
+        sessionId: this.sessionId,
+        astrologerId: this.currentAstrologerId,
+        userId: this.currentUserId,
+        isFreeChat: this.isFreeChat,
+        freeChatId: this.freeChatId,
+        timestamp: Date.now()
+      };
+      console.log('[ChatConnectionManager] Session state preserved for background');
+    }
+  }
+
+  /**
+   * Rejoin room if connection was lost
+   */
+  async rejoinRoomIfNeeded() {
+    try {
+      if (!this.socket || !this.socket.connected) {
+        console.log('[ChatConnectionManager] Socket not connected, cannot rejoin room');
+        return;
+      }
+      
+      console.log('[ChatConnectionManager] Checking if room rejoin is needed');
+      
+      if (this.isFreeChat && this.freeChatId) {
+        console.log('[ChatConnectionManager] Rejoining free chat room:', this.freeChatId);
+        this.socket.emit('join_free_chat_room', {
+          freeChatId: this.freeChatId,
+          sessionId: this.sessionId,
+          userId: this.currentUserId || this.currentAstrologerId,
+          userType: 'astrologer'
+        });
+      } else if (this.currentBookingId) {
+        console.log('[ChatConnectionManager] Rejoining consultation room:', this.currentBookingId);
+        this.socket.emit('join_consultation_room', {
+          bookingId: this.currentBookingId,
+          astrologerId: this.currentAstrologerId,
+          userId: this.currentUserId
+        });
+      }
+    } catch (error) {
+      console.error('[ChatConnectionManager] Error rejoining room:', error);
+    }
   }
 
   /**
@@ -233,12 +336,12 @@ class ChatConnectionManager {
       if (messageAccepted) {
         // Notify message callbacks with the received message
         this.notifyMessage({
-          id: data.id,
-          content: data.content,
-          text: data.content,
-          message: data.content,
+          id: data.messageId || data.id, // Backend sends 'messageId', fallback to 'id'
+          content: data.content || data.text || data.message,
+          text: data.content || data.text || data.message,
+          message: data.content || data.text || data.message,
           sender: data.senderRole === 'user' ? 'user' : 'astrologer',
-          senderId: data.sender,
+          senderId: data.sender || data.senderId,
           senderName: data.senderName,
           senderRole: data.senderRole,
           timestamp: data.timestamp,
@@ -396,6 +499,78 @@ class ChatConnectionManager {
       }
     });
 
+    // Session state response handler for app state synchronization
+    this.socket.on('session_state_response', (data) => {
+      console.log('🔄 [ASTROLOGER-APP] Session state response received:', data);
+      
+      if (data.success && data.sessionState) {
+        const sessionState = data.sessionState;
+        console.log('🔄 [ASTROLOGER-APP] Synchronizing session state:', sessionState);
+        
+        // Update timer if session is active
+        if (sessionState.isActive && sessionState.timer) {
+          console.log('🔄 [ASTROLOGER-APP] Restoring timer state:', sessionState.timer);
+          this.notifyStatusUpdate({
+            type: 'timer',
+            durationSeconds: sessionState.timer.duration,
+            seconds: sessionState.timer.duration,
+            formattedTime: sessionState.timer.formattedTime,
+            currentAmount: sessionState.timer.currentAmount,
+            sessionId: sessionState.sessionId
+          });
+        }
+        
+        // Update session status
+        if (sessionState.isActive) {
+          this.notifyStatusUpdate({
+            type: 'session_started',
+            data: sessionState,
+            sessionId: sessionState.sessionId
+          });
+        }
+      } else {
+        console.log('🔄 [ASTROLOGER-APP] No active session state found');
+      }
+    });
+    
+    // Listen for free chat session ended event
+    this.socket.on('free_chat_session_ended', (data) => {
+      console.log('🛑 [ASTROLOGER-APP] Free chat session ended event received:', data);
+      console.log('🛑 [ASTROLOGER-APP] Current booking ID:', this.currentBookingId);
+      console.log('🛑 [ASTROLOGER-APP] Current free chat ID:', this.freeChatId);
+      console.log('🛑 [ASTROLOGER-APP] Event sessionId:', data.sessionId);
+      console.log('🛑 [ASTROLOGER-APP] Event freeChatId:', data.freeChatId);
+      
+      // Check if this event is for the current session
+      let isMatchingSession = false;
+      
+      if (this.isFreeChat) {
+        // For free chat, match against freeChatId or sessionId
+        isMatchingSession = (
+          data.freeChatId === this.freeChatId || 
+          data.freeChatId === this.currentBookingId ||
+          data.sessionId === this.sessionId
+        );
+      }
+      
+      if (isMatchingSession) {
+        console.log('🛑 [ASTROLOGER-APP] ✅ Free chat session ended for current session');
+        
+        // Notify status update for session end
+        this.notifyStatusUpdate({
+          type: 'session_end',
+          sessionId: data.sessionId,
+          freeChatId: data.freeChatId,
+          duration: data.duration || 0,
+          endedBy: data.endedBy || 'user',
+          timestamp: new Date().toISOString(),
+          message: 'Free chat session ended'
+        });
+      } else {
+        console.log('🛑 [ASTROLOGER-APP] ❌ Free chat session ended for different session - ignoring');
+      }
+    });
+
     this.socket.on('session_ended', (data) => {
       console.log('[ChatConnectionManager] Session ended:', data);
       this.notifyStatusUpdate({ type: 'session_end', data });
@@ -489,6 +664,11 @@ class ChatConnectionManager {
       
       if (isMatchingSession) {
         console.log('🎆 [ASTROLOGER-APP] [FREE_CHAT] ✅ Session started for current session - activating');
+        
+        // Store session start time for reconnection scenarios
+        this.sessionStartTime = new Date();
+        this.sessionDuration = data.duration || 180;
+        
         this.notifyConnectionStatus('session_active', 'Session started');
         this.notifyStatusUpdate({ 
           type: 'session_started', 
@@ -499,6 +679,51 @@ class ChatConnectionManager {
         });
       } else {
         console.log('🎆 [ASTROLOGER-APP] [FREE_CHAT] ❌ Session started for different session - ignoring');
+      }
+    });
+    
+    // Free chat session resumed event (for reconnection scenarios)
+    this.socket.on('free_chat_session_resumed', (data) => {
+      console.log('🔄 [ASTROLOGER-APP] [FREE_CHAT] Session resumed event received:', data);
+      console.log('🔄 [ASTROLOGER-APP] [FREE_CHAT] Is free chat session:', this.isFreeChat);
+      console.log('🔄 [ASTROLOGER-APP] [FREE_CHAT] Current freeChatId:', this.freeChatId);
+      console.log('🔄 [ASTROLOGER-APP] [FREE_CHAT] Event freeChatId:', data.freeChatId);
+      
+      // Check if this is for our current free chat session
+      const isMatchingSession = this.isFreeChat && 
+        (data.freeChatId === this.freeChatId || data.bookingId === this.freeChatId);
+      
+      if (isMatchingSession) {
+        console.log('🔄 [ASTROLOGER-APP] [FREE_CHAT] ✅ Session resumed for current free chat');
+        
+        // Update session state with resumed data
+        this.sessionStartTime = new Date(data.startTime) || new Date();
+        this.sessionDuration = data.duration || 180;
+        
+        // Calculate remaining time based on backend data
+        const timeRemaining = data.timeRemaining || 0;
+        
+        console.log('🔄 [ASTROLOGER-APP] [FREE_CHAT] Session resumed with:', {
+          timeRemaining,
+          startTime: this.sessionStartTime,
+          duration: this.sessionDuration
+        });
+        
+        // Notify UI about session resumption
+        this.notifyConnectionStatus('session_resumed', 'Session resumed after reconnection');
+        this.notifyStatusUpdate({ 
+          type: 'session_resumed', 
+          timeRemaining,
+          sessionId: data.sessionId,
+          startTime: this.sessionStartTime,
+          duration: this.sessionDuration,
+          isFreeChat: true
+        });
+        
+        // Request message history to catch up on missed messages
+        this.requestMessageHistory();
+      } else {
+        console.log('🔄 [ASTROLOGER-APP] [FREE_CHAT] ❌ Session resumed for different session - ignoring');
       }
     });
     
@@ -564,6 +789,27 @@ class ChatConnectionManager {
       if (this.isFreeChat && data.freeChatId === this.freeChatId) {
         console.log('🏠 [ASTROLOGER-APP] [FREE_CHAT] ✅ Successfully joined free chat room');
         this.notifyConnectionStatus('room_joined', 'Joined free chat room');
+        
+        // If this is a reconnection scenario, attempt to resume the session
+        const previousSocketId = AsyncStorage.getItem('astrologer_previous_socket_id')
+          .then(id => {
+            if (id && id !== this.socket?.id) {
+              console.log('🏠 [ASTROLOGER-APP] [FREE_CHAT] Reconnection detected after room join - attempting to resume session');
+              this.resumeFreeChatSession();
+            }
+          })
+          .catch(err => {
+            console.error('🏠 [ASTROLOGER-APP] [FREE_CHAT] Error checking previous socket ID:', err);
+          });
+      }
+    });
+    
+    // Message history response
+    this.socket.on('free_chat_message_history', (data) => {
+      console.log('📚 [ASTROLOGER-APP] [FREE_CHAT] Message history received:', data);
+      if (this.isFreeChat && data.freeChatId === this.freeChatId) {
+        console.log(`📚 [ASTROLOGER-APP] [FREE_CHAT] ✅ Received ${data.messages?.length || 0} messages from history`);
+        this.handleMessageHistoryResponse(data);
       }
     });
     
@@ -578,10 +824,10 @@ class ChatConnectionManager {
   }
 
   /**
-   * Handle successful connection
+   * Handle successful connection with comprehensive reconnection logic
    */
-  handleConnect() {
-    console.log('[ChatConnectionManager] Connected successfully');
+  async handleConnect() {
+    console.log('🔄 [ASTROLOGER-APP] [ChatConnectionManager] Connected successfully');
     this.isConnected = true;
     this.isConnecting = false;
     this.reconnectAttempts = 0;
@@ -595,11 +841,21 @@ class ChatConnectionManager {
     this.notifyConnectionStatus('connected');
 
     // Add a small delay to ensure backend has registered all event handlers
-    // This prevents race condition where join_free_chat_room is emitted before handlers are ready
-    setTimeout(() => {
-      // Join room and flush queued messages
-      this.joinRoom();
-      this.flushMessageQueue();
+    // This prevents race condition where events are emitted before handlers are ready
+    setTimeout(async () => {
+      try {
+        // Handle reconnection room joining logic
+        await this.handleReconnectionRoomJoining();
+        
+        // Join current session room if any
+        this.joinRoom();
+        
+        // Flush queued messages
+        this.flushMessageQueue();
+        
+      } catch (error) {
+        console.error('🔄 [ASTROLOGER-APP] [ChatConnectionManager] Error during connection setup:', error);
+      }
     }, 500); // 500ms delay to ensure backend event handlers are registered
   }
 
@@ -637,11 +893,17 @@ class ChatConnectionManager {
   }
 
   /**
-   * Schedule reconnection with exponential backoff
+   * Schedule reconnection with exponential backoff and app state awareness
    */
   scheduleReconnect() {
+    // Don't reconnect if app is in background
+    if (this.appState !== 'active') {
+      console.log('🔄 [ASTROLOGER-APP] [ChatConnectionManager] Skipping reconnect - app not active:', this.appState);
+      return;
+    }
+    
     if (this.reconnectAttempts >= this.maxReconnectAttempts) {
-      console.log('[ChatConnectionManager] Max reconnection attempts reached');
+      console.log('🔄 [ASTROLOGER-APP] [ChatConnectionManager] Max reconnection attempts reached');
       this.notifyConnectionStatus('failed', 'Maximum reconnection attempts exceeded');
       return;
     }
@@ -655,29 +917,40 @@ class ChatConnectionManager {
       this.maxReconnectDelay
     );
 
-    console.log(`[ChatConnectionManager] Scheduling reconnect in ${delay}ms (attempt ${this.reconnectAttempts + 1})`);
+    console.log(`🔄 [ASTROLOGER-APP] [ChatConnectionManager] Scheduling reconnect in ${delay}ms (attempt ${this.reconnectAttempts + 1})`);
     this.notifyConnectionStatus('reconnecting', `Reconnecting in ${Math.ceil(delay / 1000)}s...`);
 
     this.reconnectTimer = setTimeout(() => {
-      this.reconnectAttempts++;
-      this.connect();
+      // Double-check app state before attempting reconnection
+      if (this.appState === 'active') {
+        this.reconnectAttempts++;
+        this.connect();
+      } else {
+        console.log('🔄 [ASTROLOGER-APP] [ChatConnectionManager] Cancelling reconnect - app no longer active');
+      }
     }, delay);
   }
 
   /**
-   * Handle app state changes
+   * Handle app state changes with comprehensive reconnection logic
    */
   handleAppStateChange(nextAppState) {
-    console.log('[ChatConnectionManager] App state changed:', this.appState, '->', nextAppState);
+    console.log('🔄 [ASTROLOGER-APP] [ChatConnectionManager] App state changed:', this.appState, '->', nextAppState);
     
     if (this.appState.match(/inactive|background/) && nextAppState === 'active') {
-      // App came to foreground
+      // App came to foreground - implement robust reconnection
+      console.log('🔄 [ASTROLOGER-APP] [ChatConnectionManager] App foregrounded - checking connection status');
+      
       if (!this.isConnected && !this.isConnecting) {
-        console.log('[ChatConnectionManager] App foregrounded, reconnecting...');
-        this.connect();
+        console.log('🔄 [ASTROLOGER-APP] [ChatConnectionManager] Not connected - initiating reconnection');
+        this.handleReconnectionOnAppForeground();
+      } else if (this.isConnected) {
+        console.log('🔄 [ASTROLOGER-APP] [ChatConnectionManager] Already connected - verifying session state');
+        this.handleReconnectionRoomJoining();
       }
     } else if (nextAppState === 'background') {
-      // App went to background - don't disconnect but stop reconnection attempts
+      // App went to background - preserve connection but stop reconnection attempts
+      console.log('🔄 [ASTROLOGER-APP] [ChatConnectionManager] App backgrounded - preserving connection');
       if (this.reconnectTimer) {
         clearTimeout(this.reconnectTimer);
         this.reconnectTimer = null;
@@ -685,6 +958,253 @@ class ChatConnectionManager {
     }
     
     this.appState = nextAppState;
+  }
+
+  /**
+   * Handle reconnection when app comes to foreground
+   */
+  async handleReconnectionOnAppForeground() {
+    try {
+      console.log('🔄 [ASTROLOGER-APP] [ChatConnectionManager] Starting reconnection process...');
+      
+      // Reset reconnection attempts for fresh start
+      this.reconnectAttempts = 0;
+      this.reconnectDelay = 1000;
+      
+      // Attempt to reconnect
+      await this.connect();
+      
+    } catch (error) {
+      console.error('🔄 [ASTROLOGER-APP] [ChatConnectionManager] Error during app foreground reconnection:', error);
+      this.scheduleReconnect();
+    }
+  }
+
+  /**
+   * Handle room rejoining after reconnection
+   */
+  async handleReconnectionRoomJoining() {
+    try {
+      console.log(' [ASTROLOGER-APP] [ChatConnectionManager] Handling reconnection room joining...');
+      
+      // Check if this is a reconnection by comparing socket IDs
+      const previousSocketId = await AsyncStorage.getItem('astrologer_previous_socket_id');
+      const currentSocketId = this.socket?.id;
+      
+      if (previousSocketId && currentSocketId && previousSocketId !== currentSocketId) {
+        console.log(' [ASTROLOGER-APP] [ChatConnectionManager] Reconnection detected - rejoining rooms');
+        console.log(' [ASTROLOGER-APP] [ChatConnectionManager] Previous socket ID:', previousSocketId);
+        console.log(' [ASTROLOGER-APP] [ChatConnectionManager] Current socket ID:', currentSocketId);
+        
+        // Store new socket ID
+        await AsyncStorage.setItem('astrologer_previous_socket_id', currentSocketId);
+        
+        // Rejoin notification room
+        await this.joinNotificationRoom();
+        
+        // Rejoin active session rooms if any
+        await this.rejoinActiveSessionRooms();
+        
+        // For free chat sessions, check if we need to resume the session
+        if (this.isFreeChat && this.freeChatId) {
+          console.log(' [ASTROLOGER-APP] [ChatConnectionManager] Attempting to resume free chat session:', this.freeChatId);
+          this.resumeFreeChatSession();
+        }
+        
+      } else if (!previousSocketId && currentSocketId) {
+        // First connection - store socket ID
+        await AsyncStorage.setItem('astrologer_previous_socket_id', currentSocketId);
+        console.log(' [ASTROLOGER-APP] [ChatConnectionManager] First connection - stored socket ID:', currentSocketId);
+      }
+      
+    } catch (error) {
+      console.error('🔄 [ASTROLOGER-APP] [ChatConnectionManager] Error during reconnection room joining:', error);
+    }
+  }
+
+  /**
+   * Join astrologer notification room
+   */
+  async joinNotificationRoom() {
+    try {
+      if (!this.isConnected || !this.socket || !this.currentAstrologerId) {
+        console.warn('🔄 [ASTROLOGER-APP] [ChatConnectionManager] Cannot join notification room - missing requirements');
+        return;
+      }
+      
+      const notificationRoom = `astrologer_${this.currentAstrologerId}`;
+      console.log('🔄 [ASTROLOGER-APP] [ChatConnectionManager] Joining notification room:', notificationRoom);
+      
+      this.socket.emit('join_room', {
+        roomId: notificationRoom,
+        userType: 'astrologer',
+        userId: this.currentAstrologerId
+      });
+      
+      // Verify room join
+      setTimeout(() => {
+        console.log('🔄 [ASTROLOGER-APP] [ChatConnectionManager] Notification room join completed for:', notificationRoom);
+      }, 1000);
+      
+    } catch (error) {
+      console.error('🔄 [ASTROLOGER-APP] [ChatConnectionManager] Error joining notification room:', error);
+    }
+  }
+
+  /**
+   * Rejoin active session rooms after reconnection
+   */
+  async rejoinActiveSessionRooms() {
+    try {
+      console.log('🔄 [ASTROLOGER-APP] [ChatConnectionManager] Checking for active sessions to rejoin...');
+      
+      if (!this.isConnected || !this.socket || !this.currentAstrologerId) {
+        console.warn('🔄 [ASTROLOGER-APP] [ChatConnectionManager] Cannot rejoin session rooms - missing requirements');
+        return;
+      }
+      
+      // If we have an active booking/free chat session, rejoin the room
+      if (this.currentBookingId || this.freeChatId) {
+        console.log('🔄 [ASTROLOGER-APP] [ChatConnectionManager] Found active session - rejoining room');
+        console.log('🔄 [ASTROLOGER-APP] [ChatConnectionManager] Current booking ID:', this.currentBookingId);
+        console.log('🔄 [ASTROLOGER-APP] [ChatConnectionManager] Current free chat ID:', this.freeChatId);
+        console.log('🔄 [ASTROLOGER-APP] [ChatConnectionManager] Is free chat:', this.isFreeChat);
+        
+        // Rejoin the appropriate room
+        this.joinRoom();
+        
+        // Notify that we're back in the session
+        this.notifyConnectionStatus('session_rejoined', 'Rejoined active session after reconnection');
+        
+        // For free chat sessions, we'll handle session resumption separately
+        // in the resumeFreeChatSession method after room joining is confirmed
+        
+      } else {
+        console.log('🔄 [ASTROLOGER-APP] [ChatConnectionManager] No active session found to rejoin');
+      }
+      
+    } catch (error) {
+      console.error('🔄 [ASTROLOGER-APP] [ChatConnectionManager] Error rejoining active session rooms:', error);
+    }
+  }
+  
+  /**
+   * Resume free chat session after reconnection
+   */
+  resumeFreeChatSession() {
+    try {
+      if (!this.isConnected || !this.socket || !this.freeChatId || !this.isFreeChat) {
+        console.warn('🔄 [ASTROLOGER-APP] [ChatConnectionManager] Cannot resume free chat - missing requirements');
+        return;
+      }
+      
+      console.log('🔄 [ASTROLOGER-APP] [ChatConnectionManager] Attempting to resume free chat session:', this.freeChatId);
+      
+      // Emit event to backend to resume the session
+      this.socket.emit('resume_free_chat_session', {
+        freeChatId: this.freeChatId,
+        sessionId: this.sessionId,
+        userId: this.currentAstrologerId,
+        userType: 'astrologer'
+      });
+      
+      console.log('🔄 [ASTROLOGER-APP] [ChatConnectionManager] Sent resume_free_chat_session event');
+      
+    } catch (error) {
+      console.error('🔄 [ASTROLOGER-APP] [ChatConnectionManager] Error resuming free chat session:', error);
+    }
+  }
+  
+  /**
+   * Request message history after reconnection
+   */
+  requestMessageHistory() {
+    try {
+      if (!this.isConnected || !this.socket) {
+        console.warn('🔄 [ASTROLOGER-APP] [ChatConnectionManager] Cannot request message history - not connected');
+        return;
+      }
+      
+      if (this.isFreeChat && this.freeChatId) {
+        console.log('🔄 [ASTROLOGER-APP] [ChatConnectionManager] Requesting free chat message history for:', this.freeChatId);
+        
+        // Request message history from backend
+        this.socket.emit('get_free_chat_message_history', {
+          freeChatId: this.freeChatId,
+          userId: this.currentAstrologerId,
+          userType: 'astrologer'
+        }, (response) => {
+          // Handle response with message history
+          this.handleMessageHistoryResponse(response);
+        });
+        
+      } else if (this.currentBookingId) {
+        console.log('🔄 [ASTROLOGER-APP] [ChatConnectionManager] Requesting booking message history for:', this.currentBookingId);
+        
+        // Request message history for regular booking
+        this.socket.emit('get_chat_message_history', {
+          bookingId: this.currentBookingId,
+          userId: this.currentAstrologerId,
+          userType: 'astrologer'
+        }, (response) => {
+          // Handle response with message history
+          this.handleMessageHistoryResponse(response);
+        });
+      }
+      
+    } catch (error) {
+      console.error('🔄 [ASTROLOGER-APP] [ChatConnectionManager] Error requesting message history:', error);
+    }
+  }
+  
+  /**
+   * Handle message history response
+   */
+  handleMessageHistoryResponse(response) {
+    try {
+      console.log('🔄 [ASTROLOGER-APP] [ChatConnectionManager] Received message history response:', response);
+      
+      if (!response || !response.success) {
+        console.error('🔄 [ASTROLOGER-APP] [ChatConnectionManager] Failed to get message history:', response?.error || 'Unknown error');
+        return;
+      }
+      
+      const messages = response.messages || [];
+      console.log(`🔄 [ASTROLOGER-APP] [ChatConnectionManager] Retrieved ${messages.length} messages from history`);
+      
+      // Process each message and notify UI
+      messages.forEach(message => {
+        // Normalize message format
+        const normalizedMessage = {
+          id: message.id || message.messageId || `msg_${Date.now()}_${Math.random()}`,
+          content: message.content || message.text || message.message || '',
+          text: message.content || message.text || message.message || '',
+          message: message.content || message.text || message.message || '',
+          sender: message.sender || message.senderRole || 'unknown',
+          senderId: message.senderId || message.sender || 'unknown',
+          senderRole: message.senderRole || message.sender || 'unknown',
+          senderName: message.senderName || (message.senderRole === 'user' ? 'User' : 'Astrologer'),
+          timestamp: message.timestamp || new Date().toISOString(),
+          roomId: message.roomId,
+          status: 'history',
+          isHistory: true // Mark as history message
+        };
+        
+        // Notify UI about this message
+        this.notifyMessage(normalizedMessage);
+      });
+      
+      // Notify UI that history is complete
+      if (messages.length > 0) {
+        this.notifyStatusUpdate({
+          type: 'message_history_loaded',
+          count: messages.length
+        });
+      }
+      
+    } catch (error) {
+      console.error('🔄 [ASTROLOGER-APP] [ChatConnectionManager] Error handling message history:', error);
+    }
   }
 
   /**
@@ -800,14 +1320,74 @@ class ChatConnectionManager {
   }
 
   /**
-   * End session
+   * End session - supports both regular and free chat sessions
+   * @param {string} sessionId - ID of the session to end
    */
   endSession(sessionId) {
-    if (this.isConnected && this.socket) {
-      this.socket.emit('end_session', {
-        bookingId: this.currentBookingId,
-        sessionId
-      });
+    console.log('🛑 [ASTROLOGER-APP] Ending session:', sessionId);
+    console.log('🛑 [ASTROLOGER-APP] Is free chat:', this.isFreeChat);
+    
+    if (!this.isConnected || !this.socket) {
+      console.error('🛑 [ASTROLOGER-APP] Cannot end session - socket not connected');
+      return false;
+    }
+    
+    // Use provided sessionId or fall back to stored sessionId
+    const actualSessionId = sessionId || this.sessionId;
+    
+    try {
+      if (this.isFreeChat) {
+        // For free chat sessions
+        console.log('🛑 [ASTROLOGER-APP] Ending FREE CHAT session:', {
+          sessionId: actualSessionId,
+          freeChatId: this.freeChatId
+        });
+        
+        // Emit end_free_chat event to backend
+        this.socket.emit('end_free_chat', { 
+          sessionId: actualSessionId,
+          freeChatId: this.freeChatId,
+          endedBy: 'astrologer'
+        });
+        
+        // Notify status update callbacks about session end
+        this.notifyStatusUpdate({
+          type: 'session_end',
+          sessionId: actualSessionId,
+          freeChatId: this.freeChatId,
+          endedBy: 'astrologer',
+          timestamp: new Date().toISOString(),
+          message: 'Free chat session ended by astrologer'
+        });
+      } else {
+        // For regular booking sessions
+        console.log('🛑 [ASTROLOGER-APP] Ending REGULAR session:', {
+          sessionId: actualSessionId,
+          bookingId: this.currentBookingId
+        });
+        
+        // Emit end_session event to backend
+        this.socket.emit('end_session', { 
+          sessionId: actualSessionId,
+          bookingId: this.currentBookingId,
+          endedBy: 'astrologer'
+        });
+        
+        // Notify status update callbacks about session end
+        this.notifyStatusUpdate({
+          type: 'session_end',
+          sessionId: actualSessionId,
+          bookingId: this.currentBookingId,
+          endedBy: 'astrologer',
+          timestamp: new Date().toISOString(),
+          message: 'Session ended by astrologer'
+        });
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('🛑 [ASTROLOGER-APP] Error ending session:', error);
+      return false;
     }
   }
 

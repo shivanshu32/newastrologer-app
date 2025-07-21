@@ -36,15 +36,36 @@ const OtpVerificationScreen = ({ route, navigation }) => {
     }
   }, [timeLeft]);
 
-  // Handle OTP input change
+  // Enhanced OTP change handler with auto-fill support (permission-free)
   const handleOtpChange = (text, index) => {
-    const newOtp = [...otp];
-    newOtp[index] = text;
-    setOtp(newOtp);
+    // Check if the input contains multiple digits (auto-fill scenario)
+    if (text.length > 1) {
+      // Extract only digits from the text
+      const digits = text.replace(/\D/g, '');
+      
+      if (digits.length >= 4) {
+        // Auto-fill all 4 digits
+        const newOtp = digits.slice(0, 4).split('');
+        setOtp(newOtp);
+        
+        // Focus the last input after auto-fill
+        setTimeout(() => {
+          inputRefs.current[3]?.focus();
+        }, 100);
+        
+        console.log('🔢 Auto-filled OTP from SMS:', newOtp.join(''));
+        return;
+      }
+    }
     
-    // Auto-focus next input
+    // Handle single digit input (manual typing)
+    const newOtp = [...otp];
+    newOtp[index] = text.replace(/\D/g, ''); // Only allow digits
+    setOtp(newOtp);
+
+    // Auto-focus next input if current input is filled
     if (text && index < 3) {
-      inputRefs.current[index + 1].focus();
+      inputRefs.current[index + 1]?.focus();
     }
   };
 
@@ -115,7 +136,17 @@ const OtpVerificationScreen = ({ route, navigation }) => {
                 onChangeText={(text) => handleOtpChange(text, index)}
                 onKeyPress={(e) => handleKeyPress(e, index)}
                 keyboardType="number-pad"
-                maxLength={1}
+                maxLength={index === 0 ? 4 : 1} // Allow first input to accept full OTP
+                autoFocus={index === 0}
+                // Android SMS auto-read properties
+                textContentType={Platform.OS === 'ios' ? 'oneTimeCode' : undefined}
+                autoComplete={Platform.OS === 'android' ? 'sms-otp' : 'one-time-code'}
+                importantForAutofill="yes"
+                // Additional properties for better auto-fill support
+                selectTextOnFocus={true}
+                blurOnSubmit={false}
+                returnKeyType="next"
+                placeholderTextColor="#9CA3AF"
               />
             ))}
           </View>

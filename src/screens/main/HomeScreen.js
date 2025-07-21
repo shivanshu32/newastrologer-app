@@ -21,7 +21,7 @@ import { SocketContext } from '../../context/SocketContext';
 import { useFocusEffect } from '@react-navigation/native';
 
 // Hardcoded app version - update this when releasing new versions
-const APP_VERSION = '3.0.0';
+const APP_VERSION = '5.0.3';
 
 const HomeScreen = ({ navigation }) => {
   const [pendingBookings, setPendingBookings] = useState([]);
@@ -575,6 +575,13 @@ const HomeScreen = ({ navigation }) => {
     console.log('🏠 [HOME] Rejecting booking request:', booking.id);
     console.log('🏠 [HOME] Booking details:', booking);
     
+    // Check if this is a free chat request - use local-only rejection
+    if (booking.isFreeChat || booking.type === 'free_chat') {
+      console.log('🏠 [HOME] This is a free chat request - using local-only rejection');
+      return handleRejectFreeChatLocal(booking);
+    }
+    
+    // Regular booking rejection logic (cancels globally)
     if (!socket) {
       console.error('🏠 [HOME] Socket is not available');
       Alert.alert('Error', 'Connection not available. Please try again.');
@@ -626,6 +633,75 @@ const HomeScreen = ({ navigation }) => {
       console.error('🏠 [HOME] Exception in handleRejectBooking:', error);
       setLoading(false);
       Alert.alert('Error', 'Failed to reject booking. Please try again.');
+    }
+  };
+  
+  // Handle local-only free chat rejection (doesn't cancel globally)
+  const handleRejectFreeChatLocal = async (booking) => {
+    console.log('🏠 [HOME] Locally rejecting free chat request:', booking.freeChatId || booking.id);
+    console.log('🏠 [HOME] Free chat details:', booking);
+    
+    if (!socket) {
+      console.error('🏠 [HOME] Socket is not available');
+      Alert.alert('Error', 'Connection not available. Please try again.');
+      return;
+    }
+
+    if (!socket.connected) {
+      console.error('🏠 [HOME] Socket is not connected');
+      Alert.alert('Error', 'Connection lost. Please try again.');
+      return;
+    }
+
+    const freeChatId = booking.freeChatId || booking.id;
+    if (!freeChatId) {
+      console.error('🏠 [HOME] No free chat ID available');
+      Alert.alert('Error', 'Invalid free chat request.');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      console.log('🏠 [HOME] About to emit reject_free_chat_local event');
+      console.log('🏠 [HOME] Payload:', { freeChatId });
+      
+      socket.emit('reject_free_chat_local', 
+        { freeChatId },
+        (response) => {
+          console.log('🏠 [HOME] reject_free_chat_local callback received:', response);
+          setLoading(false);
+          
+          if (response?.success) {
+            console.log('🏠 [HOME] Free chat dismissed locally successfully');
+            
+            // Remove the free chat request from the list (local only)
+            setPendingBookings(prevBookings => 
+              prevBookings.filter(item => 
+                (item.freeChatId || item.id) !== freeChatId
+              )
+            );
+            
+            console.log('🏠 [HOME] Free chat request removed from local pending list');
+            
+            // Show confirmation that it was dismissed locally
+            Alert.alert(
+              'Request Dismissed', 
+              'The free chat request has been removed from your list. It remains available for other astrologers.',
+              [{ text: 'OK', style: 'default' }]
+            );
+          } else {
+            console.error('🏠 [HOME] Backend rejected the local rejection:', response);
+            Alert.alert('Error', response?.message || 'Failed to dismiss free chat request. Please try again.');
+          }
+        }
+      );
+      
+      console.log('🏠 [HOME] reject_free_chat_local event emitted successfully');
+      
+    } catch (error) {
+      console.error('🏠 [HOME] Exception in handleRejectFreeChatLocal:', error);
+      setLoading(false);
+      Alert.alert('Error', 'Failed to dismiss free chat request. Please try again.');
     }
   };
 
@@ -846,7 +922,7 @@ const HomeScreen = ({ navigation }) => {
       <View style={styles.header}>
         <View style={styles.headerContent}>
           <View>
-            <Text style={styles.welcomeText}>Welcome back,</Text>
+            <Text style={styles.welcomeText}>Welcome,</Text>
             <Text style={styles.astrologerName}>{user?.displayName || user?.name || 'Astrologer'}</Text>
           </View>
           

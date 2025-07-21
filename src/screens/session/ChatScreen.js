@@ -195,6 +195,14 @@ const ChatScreen = ({ route, navigation }) => {
             }
           });
           
+          // Listen for free chat session ended event
+          socket.on('free_chat_session_ended', (data) => {
+            console.log('[ASTROLOGER-APP] Free chat session ended:', data);
+            if (data.sessionId === sessionId || data.freeChatId === bookingId) {
+              handleFreeChatSessionEnded(data);
+            }
+          });
+          
           setSessionActive(true);
           setSessionId(response.sessionId);
           
@@ -358,6 +366,36 @@ const ChatScreen = ({ route, navigation }) => {
     Alert.alert(
       'Consultation Ended',
       `The consultation has ended.\n\nSession Duration: ${data.sessionData?.duration || 0} minutes\nTotal Amount: ₹${data.sessionData?.totalAmount || 0}`,
+      [
+        {
+          text: 'Back to Home',
+          onPress: () => {
+            navigation.navigate('Home');
+          }
+        }
+      ],
+      { cancelable: false }
+    );
+  };
+  
+  const handleFreeChatSessionEnded = (data) => {
+    // Handle free chat session ended event
+    console.log('[ASTROLOGER-APP] Handling free chat session ended:', data);
+    
+    // Update session state
+    setSessionActive(false);
+    setSessionEnded(true);
+    
+    // Clean up any timers
+    if (timerRef.current) clearInterval(timerRef.current);
+    
+    // Calculate duration in minutes
+    const durationMinutes = Math.ceil((data.duration || 0) / 60);
+    
+    // Show alert to astrologer
+    Alert.alert(
+      'Free Chat Session Ended',
+      `The free chat session has ended.\n\nSession Duration: ${durationMinutes} minutes`,
       [
         {
           text: 'Back to Home',

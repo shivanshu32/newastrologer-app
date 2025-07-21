@@ -25,6 +25,7 @@ import ChatScreen from '../screens/session/ChatScreen';
 import EnhancedChatScreen from '../screens/session/EnhancedChatScreen';
 import TransactionHistoryScreen from '../screens/main/TransactionHistoryScreen';
 import TransactionDetailScreen from '../screens/main/TransactionDetailScreen';
+import ChatHistoryScreen from '../screens/ChatHistoryScreen';
 
 import RatingScreen from '../screens/session/RatingScreen';
 import AvailabilityScreen from '../screens/main/AvailabilityScreen';
@@ -175,6 +176,11 @@ const MainNavigator = () => {
         name="TransactionDetail" 
         component={TransactionDetailScreen} 
         options={{ headerShown: true, title: 'Transaction Details' }}
+      />
+      <Stack.Screen 
+        name="ChatHistory" 
+        component={ChatHistoryScreen} 
+        options={{ headerShown: true, title: 'Chat History' }}
       />
     </Stack.Navigator>
   );

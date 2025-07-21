@@ -23,6 +23,9 @@ const BookingsScreen = ({ navigation }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [activeTab, setActiveTab] = useState('all');
+  const [voiceCallStatuses, setVoiceCallStatuses] = useState({});
+  const [callTimers, setCallTimers] = useState({});
+  const [callStartTimes, setCallStartTimes] = useState({});
   
   const { socket } = useSocket();
 
@@ -92,6 +95,22 @@ const BookingsScreen = ({ navigation }) => {
   }, [fetchBookings]);
 
   // Handle booking action (join session, complete, etc.)
+  const handleViewChatHistory = (booking) => {
+    console.log(' [BookingsScreen] Viewing chat history for booking:', booking._id);
+    console.log(' [BookingsScreen] Session ID:', booking.sessionId);
+    
+    if (!booking.sessionId) {
+      Alert.alert('Error', 'Chat history is not available for this consultation.');
+      return;
+    }
+    
+    navigation.navigate('ChatHistory', {
+      sessionId: booking.sessionId,
+      bookingId: booking._id,
+      userName: booking.userInfo?.name || booking.user?.displayName || booking.user?.name || 'Unknown User'
+    });
+  };
+
   const handleBookingAction = useCallback(async (booking, action) => {
     try {
       const token = await AsyncStorage.getItem('astrologerToken');
@@ -148,9 +167,41 @@ const BookingsScreen = ({ navigation }) => {
     }
   }, [navigation, fetchBookings]);
 
-  // Get status color and display text
-  const getStatusInfo = (status) => {
-    switch (status) {
+  // Get status color and display text with voice call status support
+  const getStatusInfo = (booking) => {
+    const bookingId = booking._id;
+    const isVoiceCall = booking.type === 'voice';
+    const voiceCallStatus = voiceCallStatuses[bookingId];
+    const callTimer = callTimers[bookingId];
+    
+    // Voice call specific status handling
+    if (isVoiceCall && voiceCallStatus) {
+      const { status, message } = voiceCallStatus;
+      
+      switch (status) {
+        case 'validating_balance':
+          return { color: '#FF9800', text: 'Validating Balance', icon: 'wallet-outline' };
+        case 'connecting_astrologer':
+          return { color: '#FF9800', text: 'Connecting to Astrologer', icon: 'call-outline' };
+        case 'call_connected':
+        case 'user_connected':
+        case 'astrologer_connected':
+          const baseText = 'Call Connected';
+          const displayText = callTimer ? `${baseText} (${callTimer})` : baseText;
+          return { color: '#4CAF50', text: displayText, icon: 'call' };
+        case 'call_ended':
+          return { color: '#9C27B0', text: 'Call Ended', icon: 'checkmark-done-outline' };
+        case 'failed':
+          return { color: '#F44336', text: 'Call Failed', icon: 'close-circle-outline' };
+        case 'no_answer':
+          return { color: '#F44336', text: 'No Answer', icon: 'call-outline' };
+        default:
+          return { color: '#2196F3', text: status.charAt(0).toUpperCase() + status.slice(1).replace('_', ' '), icon: 'call-outline' };
+      }
+    }
+    
+    // Default booking status handling
+    switch (booking.status) {
       case 'pending':
         return { color: '#FF9800', text: 'Pending', icon: 'time-outline' };
       case 'confirmed':
@@ -172,7 +223,7 @@ const BookingsScreen = ({ navigation }) => {
       case 'rescheduled':
         return { color: '#FF9800', text: 'Rescheduled', icon: 'calendar-outline' };
       default:
-        return { color: '#9E9E9E', text: status, icon: 'help-outline' };
+        return { color: '#9E9E9E', text: booking.status, icon: 'help-outline' };
     }
   };
 
@@ -271,7 +322,7 @@ const BookingsScreen = ({ navigation }) => {
 
   // Render booking item with enhanced details
   const renderBookingItem = ({ item: booking }) => {
-    const statusInfo = getStatusInfo(booking.status);
+    const statusInfo = getStatusInfo(booking);
     const typeIcon = getBookingTypeIcon(booking.type);
     const canJoin = ['confirmed', 'waiting_for_user'].includes(booking.status);
     const canComplete = booking.status === 'in-progress';
@@ -352,6 +403,17 @@ const BookingsScreen = ({ navigation }) => {
             <Text style={styles.joinButtonText}>Join Session</Text>
             <Ionicons name="arrow-forward" size={16} color="#fff" />
           </TouchableOpacity>
+        ) : booking.status === 'completed' && booking.type === 'chat' && booking.sessionId ? (
+          // Show Chat History button for completed chat consultations
+          <View style={styles.completedChatActions}>
+            <TouchableOpacity 
+              style={styles.chatHistoryButton}
+              onPress={() => handleViewChatHistory(booking)}
+            >
+              <Ionicons name="chatbubbles-outline" size={18} color="#4A90E2" />
+              <Text style={styles.chatHistoryButtonText}>View Chat History</Text>
+            </TouchableOpacity>
+          </View>
         ) : (
           <View style={styles.actionContainer}>
             {canComplete && (
@@ -449,39 +511,108 @@ const BookingsScreen = ({ navigation }) => {
         // Extract relevant data
         const { status, message, bookingId } = data;
         
-        // Show alert with appropriate message based on call status
-        if (status) {
-          let title = 'Call Update';
+        if (bookingId && status) {
+          // Update voice call status for the specific booking
+          setVoiceCallStatuses(prev => ({
+            ...prev,
+            [bookingId]: { status, message }
+          }));
           
-          // Determine alert title based on status
-          if (status === 'completed') {
-            title = 'Call Completed';
-          } else if (status === 'no-answer' || status === 'failed' || status === 'busy') {
-            title = 'Call Failed';
-          } else if (status === 'in-progress') {
-            title = 'Call Connected';
+          // Start call timer when call is connected
+          if (status === 'call_connected' || status === 'user_connected' || status === 'astrologer_connected') {
+            setCallStartTimes(prev => ({
+              ...prev,
+              [bookingId]: new Date()
+            }));
           }
           
-          // Show alert with call status message
-          Alert.alert(title, message || `Call status: ${status}`);
+          // Stop call timer when call ends
+          if (status === 'call_ended' || status === 'failed' || status === 'no_answer') {
+            setCallStartTimes(prev => {
+              const newTimes = { ...prev };
+              delete newTimes[bookingId];
+              return newTimes;
+            });
+            setCallTimers(prev => {
+              const newTimers = { ...prev };
+              delete newTimers[bookingId];
+              return newTimers;
+            });
+          }
+          
+          // Show alert for important status changes
+          if (['call_connected', 'call_ended', 'failed', 'no_answer'].includes(status)) {
+            let title = 'Call Update';
+            
+            if (status === 'call_connected') {
+              title = 'Call Connected';
+            } else if (status === 'call_ended') {
+              title = 'Call Completed';
+            } else if (status === 'no_answer' || status === 'failed') {
+              title = 'Call Failed';
+            }
+            
+            Alert.alert(title, message || `Call status: ${status}`);
+          }
           
           // Refresh bookings list for completed or failed calls
-          if (['completed', 'no-answer', 'failed', 'busy'].includes(status)) {
+          if (['call_ended', 'failed', 'no_answer'].includes(status)) {
             console.log('🔄 [BookingsScreen] Refreshing bookings after call status update');
             fetchBookings();
           }
         }
       });
       
-      // Clean up listener on component unmount
+      // Listen for booking status updates
+      socket.on('booking_status_update', (data) => {
+        if (data.bookingId && data.callStatus) {
+          setVoiceCallStatuses(prev => ({
+            ...prev,
+            [data.bookingId]: { status: data.callStatus, message: '' }
+          }));
+        }
+      });
+      
+      // Clean up listeners on component unmount
       return () => {
-        console.log('🧹 [BookingsScreen] Cleaning up call_status_update listener');
+        console.log('🧹 [BookingsScreen] Cleaning up call status listeners');
         socket.off('call_status_update');
+        socket.off('booking_status_update');
       };
     }
     
     return () => {};
   }, [socket, fetchBookings]);
+
+  // Call timer effect for astrologer-app
+  useEffect(() => {
+    const intervals = {};
+    
+    Object.keys(callStartTimes).forEach(bookingId => {
+      const startTime = callStartTimes[bookingId];
+      if (startTime) {
+        const updateTimer = () => {
+          const now = new Date();
+          const elapsed = Math.floor((now - startTime) / 1000);
+          const minutes = Math.floor(elapsed / 60);
+          const seconds = elapsed % 60;
+          const timerText = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+          
+          setCallTimers(prev => ({
+            ...prev,
+            [bookingId]: timerText
+          }));
+        };
+        
+        updateTimer();
+        intervals[bookingId] = setInterval(updateTimer, 1000);
+      }
+    });
+    
+    return () => {
+      Object.values(intervals).forEach(interval => clearInterval(interval));
+    };
+  }, [callStartTimes]);
 
   const filteredBookings = getFilteredBookings();
 
@@ -745,6 +876,26 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     flex: 1,
     textAlign: 'center',
+  },
+  completedChatActions: {
+    marginTop: 8,
+  },
+  chatHistoryButton: {
+    backgroundColor: '#f0f8ff',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#4A90E2',
+  },
+  chatHistoryButtonText: {
+    fontSize: 14,
+    color: '#4A90E2',
+    fontWeight: '600',
+    marginLeft: 6,
   },
   actionContainer: {
     flexDirection: 'row',

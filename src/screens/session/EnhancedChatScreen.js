@@ -297,6 +297,14 @@ const EnhancedChatScreen = ({ route, navigation }) => {
       console.log('🔴 [ASTROLOGER-APP] 🔄 Chat connecting...');
     } else if (status.status === 'disconnected') {
       console.log('🔴 [ASTROLOGER-APP] 🔌 Chat disconnected');
+    } else if (status.status === 'session_rejoined') {
+      console.log('🔴 [ASTROLOGER-APP] 🔄 Session rejoined after reconnection');
+      
+      // For free chat sessions, we should request message history after rejoining
+      if (isFreeChatSession) {
+        console.log('🔴 [ASTROLOGER-APP] Free chat session rejoined - requesting message history');
+        requestMessageHistory();
+      }
     }
   }, []);
 
@@ -351,10 +359,31 @@ const EnhancedChatScreen = ({ route, navigation }) => {
     console.log('🔴 [ASTROLOGER-APP] Final normalized message message:', normalizedMessage.message);
     
     setMessages(prevMessages => {
-      // Avoid duplicate messages
-      const exists = prevMessages.some(msg => msg.id === normalizedMessage.id);
-      if (exists) {
-        console.log('🔴 [ASTROLOGER-APP] Duplicate message ignored:', normalizedMessage.id);
+      // Enhanced deduplication logic
+      // Check for exact ID match first
+      const exactIdExists = prevMessages.some(msg => msg.id === normalizedMessage.id);
+      if (exactIdExists) {
+        console.log('🔴 [ASTROLOGER-APP] Duplicate message ignored (exact ID):', normalizedMessage.id);
+        return prevMessages;
+      }
+      
+      // Check for content-based duplication (same sender, content, and similar timestamp)
+      // This handles cases where backend echo has different ID than optimistic UI
+      const contentDuplicate = prevMessages.some(msg => {
+        const isSameSender = msg.senderId === normalizedMessage.senderId;
+        const isSameContent = msg.content === normalizedMessage.content;
+        const timeDiff = Math.abs(new Date(msg.timestamp).getTime() - new Date(normalizedMessage.timestamp).getTime());
+        const isSimilarTime = timeDiff < 5000; // Within 5 seconds
+        
+        return isSameSender && isSameContent && isSimilarTime;
+      });
+      
+      if (contentDuplicate) {
+        console.log('🔴 [ASTROLOGER-APP] Duplicate message ignored (content-based):', {
+          content: normalizedMessage.content,
+          senderId: normalizedMessage.senderId,
+          timestamp: normalizedMessage.timestamp
+        });
         return prevMessages;
       }
       
@@ -405,12 +434,61 @@ const EnhancedChatScreen = ({ route, navigation }) => {
       }, 2000);
     }
   }, []);
+  
+  // Handle ending the session when End button is clicked
+  const handleEndSession = useCallback(() => {
+    console.log('🛑 [ASTROLOGER-APP] End session button clicked');
+    
+    if (!chatManagerRef.current) {
+      console.error('🛑 [ASTROLOGER-APP] Cannot end session - chat manager not initialized');
+      Alert.alert('Error', 'Cannot end session at this time. Please try again.');
+      return;
+    }
+    
+    // Confirm with the astrologer before ending the session
+    Alert.alert(
+      'End Session',
+      'Are you sure you want to end this chat session?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        },
+        {
+          text: 'End Session',
+          style: 'destructive',
+          onPress: () => {
+            console.log('🛑 [ASTROLOGER-APP] End session confirmed');
+            
+            // Use the sessionId from state or route params
+            const actualSessionId = sessionId || route.params?.sessionId;
+            
+            // Call endSession on the chat manager
+            const success = chatManagerRef.current.endSession(actualSessionId);
+            
+            if (success) {
+              console.log('🛑 [ASTROLOGER-APP] Session end request sent successfully');
+              console.log('🛑 [ASTROLOGER-APP] Waiting for backend confirmation...');
+              // The session_end event from the socket will handle UI updates and navigation
+              // Do NOT navigate away immediately - wait for backend confirmation
+            } else {
+              console.error('🛑 [ASTROLOGER-APP] Failed to send session end request');
+              Alert.alert('Error', 'Failed to end session. Please try again.');
+            }
+          }
+        }
+      ]
+    );
+  }, [sessionId, route.params]);
 
   // Handle status updates (timer, session end, etc.)
   const handleStatusUpdate = useCallback((data) => {
+    console.log('🔄 [ASTROLOGER-APP] Status update received:', data);
+    
     if (data.type === 'timer') {
       // Use consistent field names with user app - check both durationSeconds and seconds
       const timerValue = data.durationSeconds !== undefined ? data.durationSeconds : data.seconds;
+      console.log('🔄 [ASTROLOGER-APP] Timer update received:', timerValue);
       setSessionTimer(timerValue);
       
       // If we're receiving timer updates but session isn't active, activate it
@@ -419,8 +497,35 @@ const EnhancedChatScreen = ({ route, navigation }) => {
         setConnectionStatus('session_active');
       }
     } else if (data.type === 'session_started') {
+      console.log('🔄 [ASTROLOGER-APP] Session started event received');
       setSessionActive(true);
       setConnectionStatus('session_active');
+    } else if (data.type === 'session_resumed') {
+      console.log('🔄 [ASTROLOGER-APP] Session resumed event received:', data);
+      
+      // Update session state with resumed data
+      setSessionActive(true);
+      setConnectionStatus('session_active');
+      
+      // Update timer with remaining time from backend
+      if (data.timeRemaining !== undefined) {
+        console.log('🔄 [ASTROLOGER-APP] Updating timer with remaining time:', data.timeRemaining);
+        setSessionTimer(data.timeRemaining);
+      }
+      
+      // Show a toast or alert to inform the astrologer
+      Alert.alert(
+        'Session Resumed',
+        'Your free chat session has been resumed after reconnection.',
+        [{ text: 'OK' }]
+      );
+    } else if (data.type === 'message_history_loaded') {
+      console.log(`🔄 [ASTROLOGER-APP] Message history loaded: ${data.count} messages`);
+      
+      // Auto-scroll to bottom after message history is loaded
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: false });
+      }, 100);
     } else if (data.type === 'session_end') {
       console.log('🔴 [ASTROLOGER-APP] Session end received');
       setSessionEnded(true);
@@ -498,6 +603,14 @@ const EnhancedChatScreen = ({ route, navigation }) => {
 
 
 
+  // Request message history after reconnection
+  const requestMessageHistory = useCallback(() => {
+    if (chatManagerRef.current) {
+      console.log('🔄 [ASTROLOGER-APP] Requesting message history after reconnection');
+      chatManagerRef.current.requestMessageHistory();
+    }
+  }, []);
+  
   // Send message function
   const sendMessage = useCallback(async () => {
     const messageText = newMessage.trim();
@@ -576,32 +689,8 @@ const EnhancedChatScreen = ({ route, navigation }) => {
 
 
 
-  // End session
-  const handleEndSession = useCallback(() => {
-    Alert.alert(
-      'End Session',
-      'Are you sure you want to end this consultation session?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'End Session',
-          style: 'destructive',
-          onPress: () => {
-            if (chatManagerRef.current && sessionId) {
-              chatManagerRef.current.endSession(sessionId);
-            }
-            // Reset navigation to ensure clean state - this will reset all stacks
-            navigation.dispatch(
-              CommonActions.reset({
-                index: 0,
-                routes: [{ name: 'Home' }],
-              })
-            );
-          }
-        }
-      ]
-    );
-  }, [sessionId, navigation]);
+  // This duplicate handleEndSession function has been removed
+  // The implementation above is now the only one and handles waiting for backend confirmation
 
   // Format timer display
   const formatTimer = (seconds) => {

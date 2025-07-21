@@ -97,4 +97,9 @@ export const ledgerAPI = {
   getAstrologerTransactions: (astrologerId, params) => API.get(`/ledger/astrologer/${astrologerId}/transactions`, { params }),
 };
 
+// Chat History API
+export const chatHistoryAPI = {
+  getChatHistory: (sessionId) => API.get(`/chat-history/${sessionId}`),
+};
+
 export default API;
