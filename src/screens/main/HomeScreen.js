@@ -23,7 +23,7 @@ import { SocketContext } from '../../context/SocketContext';
 import { useFocusEffect } from '@react-navigation/native';
 
 // Hardcoded app version - update this when releasing new versions
-const APP_VERSION = '5.0.6';
+const APP_VERSION = '5.0.7';
 
 const HomeScreen = ({ navigation }) => {
   const [pendingBookings, setPendingBookings] = useState([]);
