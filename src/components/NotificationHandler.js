@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { View, AppState } from 'react-native';
 import { useNotification } from '../context/NotificationContext';
 import { useNavigation } from '@react-navigation/native';
+import { provideNotificationFeedback } from '../utils/notificationUtils';
 
 /**
  * NotificationHandler component
@@ -14,12 +15,31 @@ const NotificationHandler = () => {
   const navigation = useNavigation();
   const appState = useRef(AppState.currentState);
   const lastNotificationRef = useRef(null);
+  // We're now using the centralized notification utility functions
 
-  // Handle notification navigation when app is in foreground
+  // Handle notification navigation and feedback when app is in foreground
   useEffect(() => {
     if (notification && notification !== lastNotificationRef.current) {
       lastNotificationRef.current = notification;
-      handleNotificationNavigation(notification.request.content.data);
+      const notificationData = notification.request.content.data;
+      
+      // Check if this is a booking request notification that requires feedback
+      if (notificationData && 
+          (notificationData.type === 'new_booking' || 
+           notificationData.type === 'free_chat_request' || 
+           notificationData.notificationType === 'booking_request' || 
+           notificationData.requiresFeedback === 'true')) {
+        
+        console.log('📬 Booking request notification received - triggering feedback');
+        
+        // Trigger vibration and sound feedback using utility function (respects user preferences)
+        provideNotificationFeedback().catch(error => {
+          console.error('Error providing notification feedback:', error);
+        });
+      }
+      
+      // Handle navigation based on notification data
+      handleNotificationNavigation(notificationData);
     }
   }, [notification]);
 

@@ -541,6 +541,47 @@ export const respondToSessionJoinRequest = async (socket, bookingId, accepted, r
 };
 
 /**
+ * Get current pending free chat requests for the astrologer
+ * @param {Object} socket - Socket.io instance
+ * @returns {Promise<Array>} - Promise that resolves with pending free chat requests array
+ */
+export const getPendingFreeChatRequests = async (socket) => {
+  console.log('🆓 [CLIENT] getPendingFreeChatRequests called');
+  console.log('🆓 [CLIENT] Socket connected:', socket?.connected);
+  console.log('🆓 [CLIENT] Socket ID:', socket?.id);
+  
+  if (!socket || !socket.connected) {
+    console.log('🆓 [CLIENT] Socket not connected, rejecting');
+    return Promise.reject(new Error('Socket not connected'));
+  }
+  
+  return new Promise((resolve, reject) => {
+    console.log('🆓 [CLIENT] Setting up timeout and emitting event');
+    
+    // Set timeout for response
+    const timeout = setTimeout(() => {
+      console.log('🆓 [CLIENT] Request timeout after', RESPONSE_TIMEOUT, 'ms');
+      reject(new Error('Request timeout'));
+    }, RESPONSE_TIMEOUT);
+    
+    // Listen for response
+    console.log('🆓 [CLIENT] Emitting get_pending_free_chats event');
+    socket.emit('get_pending_free_chats', {}, (response) => {
+      console.log('🆓 [CLIENT] Received response:', response);
+      clearTimeout(timeout);
+      
+      if (response && response.success) {
+        console.log('🆓 [CLIENT] Success response with', response.pendingFreeChats?.length || 0, 'free chat requests');
+        resolve(response.pendingFreeChats || []);
+      } else {
+        console.error('🆓 [CLIENT] Get pending free chats error:', response);
+        reject(new Error(response ? response.message : 'Unknown error'));
+      }
+    });
+  });
+};
+
+/**
  * Get current pending bookings for the astrologer
  * @param {Object} socket - Socket.io instance
  * @returns {Promise<Array>} - Promise that resolves with pending bookings array
@@ -630,6 +671,7 @@ export default {
   setupAckHandler,
   initializeAckHandling,
   getPendingBookings,
+  getPendingFreeChatRequests,
   listenForPendingBookingUpdates,
   listenForSessionJoinNotifications,
   respondToSessionJoinRequest

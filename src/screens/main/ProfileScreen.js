@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
+import EnhancedNotificationSettings from '../../components/EnhancedNotificationSettings';
 
 const ProfileScreen = () => {
   const { user, logout, updateStatus } = useAuth();
@@ -136,6 +137,12 @@ const ProfileScreen = () => {
             <Text style={styles.infoValue}>{astrologer.languages}</Text>
           </View>
         </View>
+        
+        {/* Notification Settings */}
+        <View style={styles.sectionTitle}>
+          <Text style={styles.sectionTitleText}>Notification Settings</Text>
+        </View>
+        <EnhancedNotificationSettings />
         
         {/* Logout Button */}
         <View style={styles.logoutSection}>

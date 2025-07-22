@@ -228,10 +228,53 @@ class ChatConnectionManager {
   }
 
   /**
+   * Clean up existing socket event listeners to prevent duplicates
+   */
+  cleanupEventListeners() {
+    if (!this.socket) return;
+    
+    console.log('[ChatConnectionManager] 🧹 Cleaning up existing event listeners to prevent UI flickering');
+    
+    // Remove all existing listeners to prevent duplicates
+    this.socket.off('connect', this.handleConnect);
+    this.socket.off('disconnect', this.handleDisconnect);
+    this.socket.off('connect_error', this.handleConnectError);
+    this.socket.off('reconnect', this.handleReconnect);
+    
+    // Clean up chat-specific event listeners
+    this.socket.off('receive_message');
+    this.socket.off('typing_started');
+    this.socket.off('typing_stopped');
+    this.socket.off('message_status_update');
+    this.socket.off('session_status');
+    this.socket.off('session_started');
+    this.socket.off('session_timer_started');
+    this.socket.off('session_timer_update');
+    this.socket.off('session_timer');
+    this.socket.off('session_state_response');
+    this.socket.off('free_chat_session_ended');
+    this.socket.off('consultation_ended');
+    this.socket.off('session_ended');
+    this.socket.off('chat_ended');
+    this.socket.off('user_joined_consultation');
+    this.socket.off('astrologer_joined_consultation');
+    this.socket.off('call_failure_notification');
+    this.socket.off('user_left_consultation');
+    this.socket.off('astrologer_left_consultation');
+    
+    console.log('[ChatConnectionManager] ✅ Event listeners cleanup completed');
+  }
+
+  /**
    * Set up socket event listeners
    */
   setupEventListeners() {
     if (!this.socket) return;
+    
+    // 🚨 CRITICAL: Clean up existing listeners first to prevent UI flickering
+    this.cleanupEventListeners();
+    
+    console.log('[ChatConnectionManager] 🔄 Setting up fresh event listeners');
 
     this.socket.on('connect', this.handleConnect);
     this.socket.on('disconnect', this.handleDisconnect);
@@ -456,46 +499,50 @@ class ChatConnectionManager {
       console.log('⏰ [ASTROLOGER-APP] Session timer event received:', data);
       console.log('⏰ [ASTROLOGER-APP] Current booking ID:', this.currentBookingId);
       console.log('⏰ [ASTROLOGER-APP] Current free chat ID:', this.freeChatId);
-      console.log('⏰ [ASTROLOGER-APP] Event booking/freeChatId:', data.bookingId || data.freeChatId);
+      console.log('⏰ [ASTROLOGER-APP] Event session ID:', data.sessionId);
+      console.log('⏰ [ASTROLOGER-APP] Event booking ID:', data.bookingId);
+      console.log('⏰ [ASTROLOGER-APP] Event free chat ID:', data.freeChatId);
       
-      // Check if this timer event is for the current session
+      // Handle both free chat and regular booking timer events
       let isMatchingSession = false;
-      const eventId = data.bookingId || data.freeChatId;
       
       if (this.isFreeChat) {
-        // For free chat, match against freeChatId
-        isMatchingSession = (eventId === this.freeChatId || eventId === this.currentBookingId);
+        // For free chat, check free chat ID
+        if (data.freeChatId === this.freeChatId || data.sessionId === this.sessionId) {
+          console.log('⏰ [ASTROLOGER-APP] [FREE_CHAT] ✅ Timer event for current free chat session');
+          isMatchingSession = true;
+        } else {
+          console.log('⏰ [ASTROLOGER-APP] [FREE_CHAT] ❌ Timer event for different free chat session - ignoring');
+        }
       } else {
-        // For regular booking, match against bookingId
-        isMatchingSession = (eventId === this.currentBookingId);
+        // For regular booking, check booking ID
+        if (data.bookingId === this.currentBookingId || data.sessionId === this.sessionId) {
+          console.log('⏰ [ASTROLOGER-APP] [BOOKING] ✅ Timer event for current booking session');
+          isMatchingSession = true;
+        } else {
+          console.log('⏰ [ASTROLOGER-APP] [BOOKING] ❌ Timer event for different booking session - ignoring');
+        }
       }
       
       if (isMatchingSession) {
-        console.log('⏰ [ASTROLOGER-APP] ✅ Timer update for current session');
-        
-        // Extract timer values from backend data
-        const timerValue = data.durationSeconds || data.seconds || 0;
-        const timeRemaining = data.timeRemaining || 0;
-        const currentAmount = data.currentAmount || 0;
-        
-        console.log('⏰ [ASTROLOGER-APP] Timer values:', {
-          durationSeconds: timerValue,
-          timeRemaining,
-          currentAmount
+        console.log('⏰ [ASTROLOGER-APP] Timer data:', {
+          durationSeconds: data.durationSeconds,
+          durationMinutes: data.durationMinutes,
+          timeRemaining: data.timeRemaining,
+          currentAmount: data.currentAmount
         });
         
         this.notifyStatusUpdate({ 
           type: 'timer', 
-          durationSeconds: timerValue,
-          seconds: timerValue,
-          timeRemaining,
-          currentAmount,
+          durationSeconds: data.durationSeconds,
+          durationMinutes: data.durationMinutes,
+          timeRemaining: data.timeRemaining,
+          currentAmount: data.currentAmount,
+          currency: data.currency,
           sessionId: data.sessionId,
-          freeChatId: data.freeChatId,
-          isFreeChat: data.freeChatId ? true : false
+          bookingId: data.bookingId,
+          freeChatId: data.freeChatId
         });
-      } else {
-        console.log('⏰ [ASTROLOGER-APP] ❌ Timer update for different session - ignoring');
       }
     });
 
@@ -592,6 +639,97 @@ class ChatConnectionManager {
         });
       } else {
         console.log('🔴 [ASTROLOGER-APP] Consultation ended event ignored - booking ID mismatch');
+      }
+    });
+
+    // 🚨 CRITICAL: Add missing session end event listeners to fix missing notifications
+    this.socket.on('session_ended', (data) => {
+      console.log('🔚 [ASTROLOGER-APP] Session ended event received:', data);
+      console.log('🔚 [ASTROLOGER-APP] Current booking ID:', this.currentBookingId);
+      console.log('🔚 [ASTROLOGER-APP] Current free chat ID:', this.freeChatId);
+      console.log('🔚 [ASTROLOGER-APP] Event session ID:', data.sessionId);
+      console.log('🔚 [ASTROLOGER-APP] Event booking ID:', data.bookingId);
+      console.log('🔚 [ASTROLOGER-APP] End reason:', data.reason);
+      console.log('🔚 [ASTROLOGER-APP] Auto ended:', data.autoEnded);
+      
+      // Handle both free chat and regular booking session end events
+      let isMatchingSession = false;
+      
+      if (this.isFreeChat) {
+        // For free chat, check free chat ID or session ID
+        if (data.freeChatId === this.freeChatId || data.sessionId === this.sessionId) {
+          console.log('🔚 [ASTROLOGER-APP] [FREE_CHAT] ✅ Session ended for current free chat session');
+          isMatchingSession = true;
+        }
+      } else {
+        // For regular booking, check booking ID or session ID
+        if (data.bookingId === this.currentBookingId || data.sessionId === this.sessionId) {
+          console.log('🔚 [ASTROLOGER-APP] [BOOKING] ✅ Session ended for current booking session');
+          isMatchingSession = true;
+        }
+      }
+      
+      if (isMatchingSession) {
+        console.log('🔚 [ASTROLOGER-APP] Notifying session end to UI components');
+        this.notifyConnectionStatus('session_ended', data.message || 'Session has ended');
+        this.notifyStatusUpdate({ 
+          type: 'session_ended', 
+          reason: data.reason,
+          finalDuration: data.finalDuration,
+          finalAmount: data.finalAmount,
+          autoEnded: data.autoEnded,
+          message: data.message,
+          sessionId: data.sessionId,
+          bookingId: data.bookingId,
+          freeChatId: data.freeChatId,
+          timestamp: data.timestamp
+        });
+      } else {
+        console.log('🔚 [ASTROLOGER-APP] Session ended event ignored - session ID mismatch');
+      }
+    });
+
+    this.socket.on('chat_ended', (data) => {
+      console.log('💬🔚 [ASTROLOGER-APP] Chat ended event received:', data);
+      console.log('💬🔚 [ASTROLOGER-APP] Current booking ID:', this.currentBookingId);
+      console.log('💬🔚 [ASTROLOGER-APP] Current free chat ID:', this.freeChatId);
+      console.log('💬🔚 [ASTROLOGER-APP] Event session ID:', data.sessionId);
+      console.log('💬🔚 [ASTROLOGER-APP] Event booking ID:', data.bookingId);
+      console.log('💬🔚 [ASTROLOGER-APP] End reason:', data.reason);
+      
+      // Handle both free chat and regular booking chat end events
+      let isMatchingSession = false;
+      
+      if (this.isFreeChat) {
+        // For free chat, check free chat ID or session ID
+        if (data.freeChatId === this.freeChatId || data.sessionId === this.sessionId) {
+          console.log('💬🔚 [ASTROLOGER-APP] [FREE_CHAT] ✅ Chat ended for current free chat session');
+          isMatchingSession = true;
+        }
+      } else {
+        // For regular booking, check booking ID or session ID
+        if (data.bookingId === this.currentBookingId || data.sessionId === this.sessionId) {
+          console.log('💬🔚 [ASTROLOGER-APP] [BOOKING] ✅ Chat ended for current booking session');
+          isMatchingSession = true;
+        }
+      }
+      
+      if (isMatchingSession) {
+        console.log('💬🔚 [ASTROLOGER-APP] Notifying chat end to UI components');
+        this.notifyConnectionStatus('chat_ended', 'Chat session has ended');
+        this.notifyStatusUpdate({ 
+          type: 'chat_ended', 
+          reason: data.reason,
+          finalDuration: data.finalDuration,
+          finalAmount: data.finalAmount,
+          autoEnded: data.autoEnded,
+          sessionId: data.sessionId,
+          bookingId: data.bookingId,
+          freeChatId: data.freeChatId,
+          timestamp: data.timestamp
+        });
+      } else {
+        console.log('💬🔚 [ASTROLOGER-APP] Chat ended event ignored - session ID mismatch');
       }
     });
 
@@ -866,6 +1004,11 @@ class ChatConnectionManager {
     console.log('[ChatConnectionManager] Disconnected:', reason);
     this.isConnected = false;
     this.isConnecting = false;
+    
+    // 🚨 CRITICAL: Clean up event listeners on disconnect to prevent UI flickering
+    console.log('[ChatConnectionManager] 🧹 Cleaning up event listeners on disconnect');
+    this.cleanupEventListeners();
+    
     this.notifyConnectionStatus('disconnected', reason);
 
     // Only attempt reconnection for certain disconnect reasons

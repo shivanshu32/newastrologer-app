@@ -37,7 +37,8 @@ export default ({ config }) => ({
       "android.permission.VIBRATE",
       "android.permission.USE_FULL_SCREEN_INTENT"
     ],
-    package: "com.jyotishcallastrologerapp"
+    package: "com.jyotishcallastrologerapp",
+    edgeToEdgeEnabled: false
   },
   web: {
     favicon: "./assets/favicon.png"

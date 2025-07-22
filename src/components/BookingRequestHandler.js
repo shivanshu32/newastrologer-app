@@ -4,7 +4,7 @@ import { useSocket } from '../context/SocketContext';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import BookingRequestPopup from './BookingRequestPopup';
 import { useNavigation } from '@react-navigation/native';
-import { getPendingBookings, listenForPendingBookingUpdates } from '../services/socketService';
+import { getPendingBookings, getPendingFreeChatRequests, listenForPendingBookingUpdates } from '../services/socketService';
 
 const API_BASE_URL = 'https://jyotishcallbackend-2uxrv.ondigitalocean.app/api/v1';
 
@@ -208,7 +208,33 @@ const BookingRequestHandler = () => {
               });
             } else {
               console.error('🆓 [FREE_CHAT] Backend rejected free chat acceptance:', response);
-              Alert.alert('Error', response?.message || 'Failed to accept free chat');
+              
+              // Handle mutual exclusion case specifically
+              if (response?.alreadyAccepted) {
+                console.log('🔒 [MUTUAL_EXCLUSION] Free chat already accepted by another astrologer');
+                
+                // Hide the popup immediately
+                setIsPopupVisible(false);
+                setBookingRequest(null);
+                
+                // Show specific alert for already accepted case
+                Alert.alert(
+                  'Request Already Accepted',
+                  response?.message || 'This free chat request has already been accepted by another astrologer.',
+                  [
+                    {
+                      text: 'OK',
+                      onPress: () => {
+                        // Optionally refresh or fetch new pending requests
+                        console.log('🔒 [MUTUAL_EXCLUSION] User acknowledged already accepted alert');
+                      }
+                    }
+                  ]
+                );
+              } else {
+                // Handle other types of errors
+                Alert.alert('Error', response?.message || 'Failed to accept free chat');
+              }
             }
           }
         );
@@ -360,7 +386,7 @@ const BookingRequestHandler = () => {
   }, []);
 
   
-  // Fetch initial pending bookings when socket connects
+  // Fetch initial pending bookings and free chat requests when socket connects
   useEffect(() => {
     const fetchInitialPendingBookings = async () => {
       if (!socket || !isConnected) {
@@ -381,8 +407,72 @@ const BookingRequestHandler = () => {
       }
     };
     
+    const fetchInitialFreeChatRequests = async () => {
+      if (!socket || !isConnected) {
+        console.log('🆓 [FREE_CHAT] Socket not connected, skipping initial free chat requests fetch');
+        return;
+      }
+      
+      try {
+        console.log('🆓 [FREE_CHAT] Fetching initial pending free chat requests...');
+        const pendingFreeChatRequests = await getPendingFreeChatRequests(socket);
+        console.log('🆓 [FREE_CHAT] Initial pending free chat requests:', pendingFreeChatRequests);
+        
+        // If there are pending free chat requests, show the first one as a popup
+        if (pendingFreeChatRequests && pendingFreeChatRequests.length > 0) {
+          console.log('🆓 [FREE_CHAT] Found', pendingFreeChatRequests.length, 'pending free chat requests');
+          
+          // Get the first (oldest) free chat request
+          const firstFreeChatRequest = pendingFreeChatRequests[0];
+          console.log('🆓 [FREE_CHAT] Displaying popup for first free chat request:', firstFreeChatRequest);
+          
+          // Transform free chat data to booking request format for the popup
+          const freeChatBookingRequest = {
+            bookingId: firstFreeChatRequest.freeChatId,
+            _id: firstFreeChatRequest.freeChatId,
+            type: 'chat',
+            user: {
+              id: firstFreeChatRequest.user?.id || firstFreeChatRequest.user?._id,
+              name: firstFreeChatRequest.user?.name,
+              mobile: firstFreeChatRequest.user?.mobile,
+              profileImage: firstFreeChatRequest.user?.profileImage
+            },
+            userProfile: firstFreeChatRequest.userProfile,
+            sessionId: firstFreeChatRequest.sessionId,
+            rate: 0, // Free chat has no cost
+            amount: 0,
+            duration: 3, // 3 minutes
+            notes: 'Free 3-minute chat consultation',
+            message: 'Free 3-minute chat consultation',
+            scheduledAt: firstFreeChatRequest.createdAt || new Date().toISOString(),
+            createdAt: firstFreeChatRequest.createdAt || new Date().toISOString(),
+            expiresAt: firstFreeChatRequest.expiresAt || new Date(Date.now() + 300000).toISOString(), // 5 minutes to accept
+            isFreeChat: true, // Flag to identify free chat requests
+            userName: firstFreeChatRequest.user?.name,
+            userImage: firstFreeChatRequest.user?.profileImage || 'default-user.png',
+            userInfo: {
+              name: firstFreeChatRequest.user?.name,
+              mobile: firstFreeChatRequest.user?.mobile,
+              profileImage: firstFreeChatRequest.user?.profileImage || 'default-user.png'
+            }
+          };
+          
+          console.log('🆓 [FREE_CHAT] Transformed free chat request for popup:', freeChatBookingRequest);
+          
+          // Show the booking request popup for the free chat request
+          handleBookingRequest(freeChatBookingRequest);
+        } else {
+          console.log('🆓 [FREE_CHAT] No pending free chat requests found');
+        }
+      } catch (error) {
+        console.error('🆓 [FREE_CHAT] Failed to fetch initial free chat requests:', error);
+      }
+    };
+    
+    // Fetch both regular bookings and free chat requests
     fetchInitialPendingBookings();
-  }, [socket, isConnected]);
+    fetchInitialFreeChatRequests();
+  }, [socket, isConnected, handleBookingRequest]);
   
   // Set up socket listener for real-time pending booking updates
   useEffect(() => {
@@ -480,6 +570,67 @@ const BookingRequestHandler = () => {
         setIsPopupVisible(false);
         setBookingRequest(null);
         Alert.alert('Booking Expired', 'The booking request has expired.');
+      }
+    });
+
+    // MUTUAL EXCLUSION: Listen for free chat requests being accepted by other astrologers
+    socket.on('free_chat_taken', (data) => {
+      console.log('🔒 [MUTUAL_EXCLUSION] Free chat taken by another astrologer:', data);
+      
+      // Check if the current popup is for this free chat request
+      if (bookingRequest && 
+          (bookingRequest._id === data.freeChatId || 
+           bookingRequest.freeChatId === data.freeChatId ||
+           bookingRequest.bookingId === data.freeChatId)) {
+        
+        console.log('🔒 [MUTUAL_EXCLUSION] Current popup is for taken free chat, removing...');
+        
+        // Immediately hide the popup
+        setIsPopupVisible(false);
+        setBookingRequest(null);
+        setIsAccepting(false);
+        setIsRejecting(false);
+        
+        // Show alert to inform astrologer
+        Alert.alert(
+          'Request No Longer Available', 
+          data.message || 'This free chat request has been accepted by another astrologer.',
+          [{ text: 'OK', style: 'default' }]
+        );
+      }
+    });
+
+    // MUTUAL EXCLUSION: Listen for general free chat request removal events
+    socket.on('free_chat_request_removed', (data) => {
+      console.log('🔒 [MUTUAL_EXCLUSION] Free chat request removed:', data);
+      
+      // Check if the current popup is for this free chat request
+      if (bookingRequest && 
+          (bookingRequest._id === data.freeChatId || 
+           bookingRequest.freeChatId === data.freeChatId ||
+           bookingRequest.bookingId === data.freeChatId)) {
+        
+        console.log('🔒 [MUTUAL_EXCLUSION] Current popup is for removed free chat, hiding...');
+        
+        // Immediately hide the popup
+        setIsPopupVisible(false);
+        setBookingRequest(null);
+        setIsAccepting(false);
+        setIsRejecting(false);
+        
+        // Show appropriate message based on reason
+        let alertMessage = 'This free chat request is no longer available.';
+        if (data.reason === 'accepted_by_other') {
+          alertMessage = 'This free chat request has been accepted by another astrologer.';
+        } else if (data.reason === 'expired') {
+          alertMessage = 'This free chat request has expired.';
+        }
+        
+        Alert.alert(
+          'Request No Longer Available', 
+          alertMessage,
+          [{ text: 'OK', style: 'default' }]
+        );
       }
     });
 
@@ -595,7 +746,10 @@ const BookingRequestHandler = () => {
     return () => {
       console.log('Cleaning up booking request and lifecycle listeners');
       socket.off('booking_request');
+      socket.off('free_chat_available');
       socket.off('booking_expired');
+      socket.off('free_chat_taken');
+      socket.off('free_chat_request_removed');
       socket.off('booking_response_confirmed');
       socket.off('booking_status_update');
       socket.off('user_joined_consultation');

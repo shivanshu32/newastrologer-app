@@ -11,6 +11,8 @@ import {
   Image,
   Button,
   SafeAreaView,
+  StatusBar,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Sentry from '@sentry/react-native';
@@ -21,7 +23,7 @@ import { SocketContext } from '../../context/SocketContext';
 import { useFocusEffect } from '@react-navigation/native';
 
 // Hardcoded app version - update this when releasing new versions
-const APP_VERSION = '5.0.4';
+const APP_VERSION = '5.0.6';
 
 const HomeScreen = ({ navigation }) => {
   const [pendingBookings, setPendingBookings] = useState([]);
@@ -918,31 +920,34 @@ const HomeScreen = ({ navigation }) => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <View style={styles.headerContent}>
-          <View>
-            <Text style={styles.welcomeText}>Welcome,</Text>
-            <Text style={styles.astrologerName}>{user?.displayName || user?.name || 'Astrologer'}</Text>
-          </View>
-          
-          <TouchableOpacity 
-            style={styles.headerWalletContainer} 
-            onPress={() => navigation.navigate('Wallet')}
-            activeOpacity={0.7}
-          >
-            <View style={styles.headerWalletContent}>
-              <Ionicons name="wallet-outline" size={24} color="white" />
-              <View style={styles.headerWalletText}>
-                <Text style={styles.headerWalletBalance}>
-                  ₹{loadingWallet ? '...' : walletBalance.toFixed(2)}
-                </Text>
-                <Text style={styles.headerWalletLabel}>Wallet</Text>
-              </View>
+    <SafeAreaView style={styles.safeAreaContainer}>
+      <StatusBar barStyle="light-content" backgroundColor="#F97316" translucent={false} />
+      
+      <View style={styles.container}>
+        <View style={styles.header}>
+          <View style={styles.headerContent}>
+            <View>
+              <Text style={styles.welcomeText}>Welcome,</Text>
+              <Text style={styles.astrologerName}>{user?.displayName || user?.name || 'Astrologer'}</Text>
             </View>
-          </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.headerWalletContainer} 
+              onPress={() => navigation.navigate('Wallet')}
+              activeOpacity={0.7}
+            >
+              <View style={styles.headerWalletContent}>
+                <Ionicons name="wallet-outline" size={24} color="white" />
+                <View style={styles.headerWalletText}>
+                  <Text style={styles.headerWalletBalance}>
+                    ₹{loadingWallet ? '...' : walletBalance.toFixed(2)}
+                  </Text>
+                  <Text style={styles.headerWalletLabel}>Wallet</Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
       
       {/* Pending Requests Section - Only show if there are pending requests */}
       {(!loading && pendingBookings.length > 0) && (
@@ -1058,24 +1063,29 @@ const HomeScreen = ({ navigation }) => {
         </View>
       </View>
       
-      {loading && pendingBookings.length > 0 && (
-        <View style={styles.loadingOverlay}>
-          <ActivityIndicator size="large" color="#F97316" />
-        </View>
-      )}
-      {/* <Button title='Try!' onPress={ () => { Sentry.captureException(new Error('First error')) }}/> */}
+        {loading && pendingBookings.length > 0 && (
+          <View style={styles.loadingOverlay}>
+            <ActivityIndicator size="large" color="#F97316" />
+          </View>
+        )}
+        {/* <Button title='Try!' onPress={ () => { Sentry.captureException(new Error('First error')) }}/> */}
+      </View>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
+  safeAreaContainer: {
+    flex: 1,
+    backgroundColor: '#F97316', // Match header background
+  },
   container: {
     flex: 1,
     backgroundColor: '#f8f8f8',
   },
   header: {
     backgroundColor: '#F97316',
-    paddingTop: 50,
+    paddingTop: Platform.OS === 'ios' ? 15 : 25, // Reduced since SafeAreaView handles safe area
     paddingBottom: 20,
     paddingHorizontal: 20,
     borderBottomLeftRadius: 20,

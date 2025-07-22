@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "225163383908",
+    "project_id": "jyotish2-dd398",
+    "storage_bucket": "jyotish2-dd398.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:225163383908:android:a9490f2ec3af7646083b71",
+        "android_client_info": {
+          "package_name": "com.jyotishcallastrologerapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDM5_yykPFf7jgUia7jKpqjvXCdYWjuqzo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
