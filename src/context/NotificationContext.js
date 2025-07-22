@@ -7,27 +7,45 @@ import axios from 'axios';
 // API URL Configuration
 const API_URL = 'https://jyotishcallbackend-2uxrv.ondigitalocean.app/api/v1';
 
-// Import notifications - prioritize real implementation
+// Import notifications - FORCE real implementation
 let Notifications;
 let Device;
 let isUsingMockImplementation = false;
 
+// Try multiple ways to import expo-notifications
 try {
+  // Method 1: Direct require
   Notifications = require('expo-notifications');
   Device = require('expo-device');
-  console.log('✅ [FCM] Real expo-notifications loaded successfully');
+  
+  // Validate that we have real functions
+  if (Notifications && typeof Notifications.getExpoPushTokenAsync === 'function' && Device) {
+    console.log('✅ [FCM] Real expo-notifications loaded successfully');
+    console.log('✅ [FCM] Device.isDevice:', Device.isDevice);
+    console.log('✅ [FCM] Notifications functions available:', {
+      getExpoPushTokenAsync: typeof Notifications.getExpoPushTokenAsync,
+      getPermissionsAsync: typeof Notifications.getPermissionsAsync,
+      requestPermissionsAsync: typeof Notifications.requestPermissionsAsync
+    });
+  } else {
+    throw new Error('expo-notifications functions not available');
+  }
 } catch (error) {
-  console.log('⚠️ [FCM] Failed to load expo-notifications, using mock implementation:', error.message);
+  console.log('❌ [FCM] Failed to load expo-notifications:', error.message);
+  console.log('❌ [FCM] This will prevent real FCM tokens from being generated');
   isUsingMockImplementation = true;
   
-  // Mock implementation only as fallback
+  // Minimal mock implementation - should not be used in production
   Notifications = {
     setNotificationHandler: () => {},
     addNotificationReceivedListener: () => ({ remove: () => {} }),
     addNotificationResponseReceivedListener: () => ({ remove: () => {} }),
     getPermissionsAsync: async () => ({ status: 'granted' }),
     requestPermissionsAsync: async () => ({ status: 'granted' }),
-    getExpoPushTokenAsync: async () => ({ data: 'mock-expo-push-token-fallback' }),
+    getExpoPushTokenAsync: async () => {
+      console.log('❌ [FCM] WARNING: Using mock token - push notifications will NOT work!');
+      return { data: 'MOCK_TOKEN_PUSH_NOTIFICATIONS_DISABLED' };
+    },
     scheduleNotificationAsync: async () => {},
     setNotificationChannelAsync: async () => {},
     removeNotificationSubscription: () => {},
@@ -132,11 +150,10 @@ export const NotificationProvider = ({ children }) => {
         console.log('❌ [FCM] Notification setup failed:', error.message);
       }
     } else {
-      console.log('⚠️ [FCM] Notifications not available - using mock implementation');
-      // Only use mock token if we're explicitly in mock mode
-      if (isUsingMockImplementation) {
-        setExpoPushToken('mock-expo-push-token-fallback');
-      }
+      console.log('❌ [FCM] CRITICAL ERROR: Notifications not available');
+      console.log('❌ [FCM] This means expo-notifications failed to load');
+      console.log('❌ [FCM] Push notifications will NOT work');
+      // Do not set any token - let it remain empty to indicate failure
     }
     
     return () => {};
@@ -222,11 +239,21 @@ async function registerForPushNotificationsAsync() {
   console.log('🚀 [FCM] Using mock implementation:', isUsingMockImplementation);
   console.log('🚀 [FCM] Device.isDevice:', Device?.isDevice);
   console.log('🚀 [FCM] Platform:', Platform.OS);
+  console.log('🚀 [FCM] Constants.expoConfig?.extra?.eas?.projectId:', Constants.expoConfig?.extra?.eas?.projectId);
   
-  // Only use mock tokens if we're explicitly using mock implementation
+  // CRITICAL: Do not use mock tokens in production
   if (isUsingMockImplementation) {
-    console.log('⚠️ [FCM] Using mock push token due to mock implementation');
-    return 'mock-expo-push-token-fallback';
+    console.log('❌ [FCM] CRITICAL ERROR: Using mock implementation - push notifications will NOT work!');
+    console.log('❌ [FCM] This means expo-notifications failed to load properly');
+    console.log('❌ [FCM] Check your app build configuration and dependencies');
+    return 'MOCK_TOKEN_PUSH_NOTIFICATIONS_DISABLED';
+  }
+  
+  // Validate that we have real Notifications functions
+  if (!Notifications || typeof Notifications.getExpoPushTokenAsync !== 'function') {
+    console.log('❌ [FCM] CRITICAL ERROR: Notifications.getExpoPushTokenAsync is not available');
+    console.log('❌ [FCM] Notifications object:', Notifications);
+    return '';
   }
   
   try {
@@ -271,24 +298,58 @@ async function registerForPushNotificationsAsync() {
           return '';
         }
         
-        // Get Expo push token
+        // Get Expo push token with comprehensive diagnostics
         console.log('🎫 [FCM] Getting Expo push token...');
         console.log('🎫 [FCM] Project ID:', Constants.expoConfig?.extra?.eas?.projectId);
+        console.log('🎫 [FCM] Constants.expoConfig:', JSON.stringify(Constants.expoConfig, null, 2));
+        console.log('🎫 [FCM] Constants.executionEnvironment:', Constants.executionEnvironment);
+        console.log('🎫 [FCM] Constants.appOwnership:', Constants.appOwnership);
         
-        const tokenResult = await Notifications.getExpoPushTokenAsync({
-          projectId: Constants.expoConfig?.extra?.eas?.projectId,
-        });
+        // Try to get token with detailed error handling
+        let tokenResult;
+        try {
+          tokenResult = await Notifications.getExpoPushTokenAsync({
+            projectId: Constants.expoConfig?.extra?.eas?.projectId,
+          });
+          console.log('🎫 [FCM] Raw token result:', tokenResult);
+        } catch (tokenError) {
+          console.log('❌ [FCM] Error getting token:', tokenError.message);
+          console.log('❌ [FCM] Error stack:', tokenError.stack);
+          
+          // Try without project ID as fallback
+          try {
+            console.log('🎫 [FCM] Trying without project ID...');
+            tokenResult = await Notifications.getExpoPushTokenAsync();
+            console.log('🎫 [FCM] Fallback token result:', tokenResult);
+          } catch (fallbackError) {
+            console.log('❌ [FCM] Fallback also failed:', fallbackError.message);
+            return '';
+          }
+        }
         
         token = tokenResult.data;
         console.log('✅ [FCM] Successfully obtained Expo push token:', token);
+        console.log('✅ [FCM] Token length:', token?.length);
+        console.log('✅ [FCM] Token type:', typeof token);
         
-        // Validate token format
-        if (token && !token.startsWith('mock-')) {
-          console.log('✅ [FCM] Token appears to be real (not mock)');
+        // Comprehensive token validation
+        if (!token) {
+          console.log('❌ [FCM] Token is null or undefined');
+          return '';
+        }
+        
+        if (token.startsWith('ExponentPushToken[')) {
+          console.log('✅ [FCM] Token appears to be a REAL Expo push token');
           return token;
+        } else if (token.startsWith('mock-') || token.includes('mock') || token.includes('MOCK')) {
+          console.log('❌ [FCM] Token is MOCK - this will not work for push notifications');
+          console.log('❌ [FCM] Mock token detected:', token);
+          // Return empty string to prevent backend from using mock token
+          return '';
         } else {
-          console.log('⚠️ [FCM] Token appears to be mock or invalid:', token);
-          return token; // Return it anyway for debugging
+          console.log('⚠️ [FCM] Token format unknown:', token);
+          console.log('⚠️ [FCM] Will attempt to use it anyway');
+          return token;
         }
         
       } catch (error) {
