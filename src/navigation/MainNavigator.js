@@ -22,7 +22,7 @@ import BookingsScreen from '../screens/main/BookingsScreen';
 import WalletScreen from '../screens/main/WalletScreen';
 import ProfileScreen from '../screens/main/ProfileScreen';
 import ChatScreen from '../screens/session/ChatScreen';
-import EnhancedChatScreen from '../screens/session/EnhancedChatScreen';
+import FixedChatScreen from '../screens/session/FixedChatScreen';
 import TransactionHistoryScreen from '../screens/main/TransactionHistoryScreen';
 import TransactionDetailScreen from '../screens/main/TransactionDetailScreen';
 import ChatHistoryScreen from '../screens/ChatHistoryScreen';
@@ -66,7 +66,7 @@ const HomeStack = ({ navigation, route }) => {
     >
       <Stack.Screen name="HomeMain" component={HomeScreen} />
       <Stack.Screen name="HomeChat" component={ChatScreen} options={{ headerShown: false }} />
-      <Stack.Screen name="HomeEnhancedChat" component={EnhancedChatScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="HomeEnhancedChat" component={FixedChatScreen} options={{ headerShown: false }} />
       <Stack.Screen name="HomeRating" component={RatingScreen} options={{ headerShown: false }} />
       <Stack.Screen name="Availability" component={AvailabilityScreen} options={{ headerShown: false }} />
       <Stack.Screen name="UpdateScreen" component={UpdateScreen} options={{ headerShown: false }} />
@@ -76,36 +76,58 @@ const HomeStack = ({ navigation, route }) => {
 
 // Stack navigator for Bookings tab
 const BookingsStack = ({ navigation, route }) => {
+  // Track current tab bar state to prevent unnecessary setOptions calls
+  const [currentTabBarState, setCurrentTabBarState] = React.useState(null);
+  
+  // Memoize navigation options to prevent unnecessary re-renders
+  const screenOptions = React.useMemo(() => ({
+    ...navigationConfig.stack.screenOptions,
+    headerShown: false,
+  }), []);
+  
+  const hiddenTabBarStyle = React.useMemo(() => ({
+    tabBarStyle: { display: 'none' }
+  }), []);
+  
+  const visibleTabBarStyle = React.useMemo(() => ({
+    tabBarStyle: {
+      ...navigationConfig.tab.screenOptions.tabBarStyle,
+      paddingBottom: 5,
+      paddingTop: 5,
+    }
+  }), []);
+  
+  // Memoize screen listeners to prevent recreation on every render
+  const screenListeners = React.useMemo(() => ({
+    state: (e) => {
+      // Get the current route name in the stack
+      const routeName = e.data.state.routes[e.data.state.index].name;
+      
+      // Determine if tab bar should be hidden
+      const shouldHideTabBar = routeName === 'BookingsChat' || routeName === 'BookingsEnhancedChat';
+      
+      // Only call setOptions if the state actually changed
+      if (currentTabBarState !== shouldHideTabBar) {
+        console.log('🔄 [NAVIGATION] Tab bar state changing:', { routeName, shouldHideTabBar, previousState: currentTabBarState });
+        setCurrentTabBarState(shouldHideTabBar);
+        
+        if (shouldHideTabBar) {
+          navigation.setOptions(hiddenTabBarStyle);
+        } else {
+          navigation.setOptions(visibleTabBarStyle);
+        }
+      }
+    },
+  }), [currentTabBarState, navigation, hiddenTabBarStyle, visibleTabBarStyle]);
+  
   return (
     <Stack.Navigator
-      screenOptions={{
-        ...navigationConfig.stack.screenOptions,
-        headerShown: false,
-      }}
-      screenListeners={{
-        state: (e) => {
-          // Get the current route name in the stack
-          const routeName = e.data.state.routes[e.data.state.index].name;
-          // Hide tab bar for EnhancedChatScreen
-          if (routeName === 'BookingsChat' || routeName === 'BookingsEnhancedChat') {
-            navigation.setOptions({
-              tabBarStyle: { display: 'none' }
-            });
-          } else {
-            navigation.setOptions({
-              tabBarStyle: {
-                ...navigationConfig.tab.screenOptions.tabBarStyle,
-                paddingBottom: 5,
-                paddingTop: 5,
-              }
-            });
-          }
-        },
-      }}
+      screenOptions={screenOptions}
+      screenListeners={screenListeners}
     >
       <Stack.Screen name="BookingsMain" component={BookingsScreen} />
-      <Stack.Screen name="BookingsChat" component={EnhancedChatScreen} />
-      <Stack.Screen name="BookingsEnhancedChat" component={EnhancedChatScreen} />
+      <Stack.Screen name="BookingsChat" component={FixedChatScreen} />
+      <Stack.Screen name="BookingsEnhancedChat" component={FixedChatScreen} />
 
 
       <Stack.Screen name="BookingsRating" component={RatingScreen} />

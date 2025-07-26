@@ -567,7 +567,7 @@ export const getPendingFreeChatRequests = async (socket) => {
     // Listen for response
     console.log('🆓 [CLIENT] Emitting get_pending_free_chats event');
     socket.emit('get_pending_free_chats', {}, (response) => {
-      console.log('🆓 [CLIENT] Received response:', response);
+     // console.log('🆓 [CLIENT] Received response:', response);
       clearTimeout(timeout);
       
       if (response && response.success) {

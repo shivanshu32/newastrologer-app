@@ -33,20 +33,25 @@ const WaitingRoomScreen = () => {
       }
 
       // Call backend API to cancel booking
-      const response = await fetch('https://jyotishcallbackend-2uxrv.ondigitalocean.app/api/bookings/cancel', {
-        method: 'POST',
+      const response = await fetch(`https://jyotishcallbackend-2uxrv.ondigitalocean.app/api/v1/bookings/${bookingId}/cancel`, {
+        method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
-          bookingId: bookingId,
-          cancelledBy: 'astrologer',
           reason: 'Cancelled by astrologer from waiting room'
         }),
       });
 
-      const data = await response.json();
+      // Check if response is JSON
+      let data;
+      try {
+        data = await response.json();
+      } catch (parseError) {
+        console.error('Failed to parse response as JSON:', parseError);
+        throw new Error(`Server error: ${response.status} ${response.statusText}`);
+      }
       
       if (response.ok && data.success) {
         // Emit socket event to notify user immediately
@@ -210,22 +215,38 @@ const WaitingRoomScreen = () => {
         );
       } else {
         console.log('✅ [ASTROLOGER-APP] Navigating to enhanced chat consultation');
-        console.log('✅ [ASTROLOGER-APP] Navigation params with complete booking details:', {
+        
+        // Check if we're already on the EnhancedChatScreen to prevent remounts
+        const currentRoute = navigation.getState()?.routes?.[navigation.getState()?.index];
+        if (currentRoute?.name === 'BookingsEnhancedChat') {
+          console.log('⚠️ [ASTROLOGER-APP] Already on FixedChatScreen, skipping navigation to prevent remount');
+          return;
+        }
+        
+        const navigationParams = {
           bookingId: bookingId,
           sessionId: enhancedBookingDetails.sessionId || bookingDetails?.sessionId || data.sessionId,
           roomId: data.roomId,
           consultationType: 'chat',
           astrologerId: bookingDetails?.astrologer?._id || bookingDetails?.astrologer,
           bookingDetails: bookingDetails
-        });
-        navigation.navigate('BookingsEnhancedChat', {
-          bookingId: bookingId,
-          sessionId: enhancedBookingDetails.sessionId || bookingDetails?.sessionId || data.sessionId,
-          roomId: data.roomId,
-          consultationType: 'chat',
-          astrologerId: bookingDetails?.astrologer?._id || bookingDetails?.astrologer,
-          bookingDetails: bookingDetails
-        });
+        };
+        
+        console.log('✅ [ASTROLOGER-APP] Navigation params with complete booking details:', navigationParams);
+        
+        // Use replace instead of navigate to prevent creating multiple route instances
+        console.log('🚀🚀🚀 [ASTROLOGER-APP] ABOUT TO CALL navigation.replace(\'BookingsEnhancedChat\') 🚀🚀🚀');
+        console.log('🚀🚀🚀 [ASTROLOGER-APP] Navigation object available:', !!navigation);
+        console.log('🚀🚀🚀 [ASTROLOGER-APP] Navigation.replace function available:', typeof navigation.replace);
+        
+        try {
+          navigation.replace('BookingsEnhancedChat', navigationParams);
+          console.log('✅✅✅ [ASTROLOGER-APP] navigation.replace() call completed successfully! ✅✅✅');
+        } catch (error) {
+          console.error('❌❌❌ [ASTROLOGER-APP] navigation.replace() failed with error:', error);
+        }
+        
+        console.log('✅ [ASTROLOGER-APP] Used navigation.replace to prevent route duplication');
       }
     };
 
@@ -346,15 +367,21 @@ const WaitingRoomScreen = () => {
     // Cleanup listeners
     return () => {
       console.log('🔌 [ASTROLOGER-APP] Cleaning up WaitingRoomScreen listeners');
-      socket.off('user_joined_consultation', userJoinedHandler);
-      socket.off('join_consultation', joinConsultationHandler);
-      socket.off('direct_notification', directNotificationHandler);
-      socket.off('booking_cancelled', bookingCancelledHandler);
-      socket.off('voice_call_initiated', voiceCallInitiatedHandler);
-      socket.off('voice_call_failed', voiceCallFailedHandler);
       
-      // Leave the room when component unmounts
-      socket.emit('leave_room', { bookingId });
+      // Add null checks to prevent ReferenceError
+      if (socket) {
+        socket.off('user_joined_consultation', userJoinedHandler);
+        socket.off('join_consultation', joinConsultationHandler);
+        socket.off('direct_notification', directNotificationHandler);
+        socket.off('booking_cancelled', bookingCancelledHandler);
+        socket.off('voice_call_initiated', voiceCallInitiatedHandler);
+        socket.off('voice_call_failed', voiceCallFailedHandler);
+        
+        // Leave the room when component unmounts
+        socket.emit('leave_room', { bookingId });
+      } else {
+        console.log('⚠️ [ASTROLOGER-APP] Socket not available during cleanup');
+      }
     };
   }, [socket, isConnected, bookingId, bookingDetails, navigation]);
 

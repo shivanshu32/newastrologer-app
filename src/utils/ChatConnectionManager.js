@@ -498,18 +498,35 @@ class ChatConnectionManager {
       console.log('🔴 [ASTROLOGER-APP] Session timer update received:', data);
       console.log('🔴 [ASTROLOGER-APP] Current booking ID:', this.currentBookingId);
       console.log('🔴 [ASTROLOGER-APP] Event booking ID:', data.bookingId);
+      console.log('🔴 [ASTROLOGER-APP] Connection status:', this.isConnected);
       
-      if (data.bookingId === this.currentBookingId || data.bookingId == this.currentBookingId) {
-        console.log('🔴 [ASTROLOGER-APP] ✅ Timer update for current booking:', data.formattedTime);
+      // ENHANCED VALIDATION: Only process timer updates for current session and if connected
+      const isCurrentSession = (data.bookingId === this.currentBookingId || data.bookingId == this.currentBookingId);
+      const isConnected = this.isConnected;
+      
+      if (isCurrentSession && isConnected) {
+        console.log('🔴 [ASTROLOGER-APP] ✅ Timer update for current session - processing:', data.formattedTime);
+        
+        // Update session state with latest timer data
+        this.sessionState.isActive = true;
+        this.sessionState.sessionId = data.sessionId || this.sessionState.sessionId;
+        this.sessionState.lastTimerUpdate = Date.now();
+        
         this.notifyStatusUpdate({ 
           type: 'timer', 
           durationSeconds: data.duration,
           seconds: data.duration,
           formattedTime: data.formattedTime,
-          sessionId: data.sessionId
+          sessionId: data.sessionId,
+          bookingId: data.bookingId
         });
       } else {
-        console.log('🔴 [ASTROLOGER-APP] ❌ Timer update for different booking - ignoring');
+        console.log('🔴 [ASTROLOGER-APP] ❌ Timer update ignored - validation failed:', {
+          isCurrentSession,
+          isConnected,
+          currentBookingId: this.currentBookingId,
+          eventBookingId: data.bookingId
+        });
       }
     });
 
@@ -1057,6 +1074,11 @@ class ChatConnectionManager {
     // 🚨 CRITICAL: Clean up event listeners on disconnect to prevent UI flickering
     console.log('[ChatConnectionManager] 🧹 Cleaning up event listeners on disconnect');
     this.cleanupEventListeners();
+    
+    // Reset session state to prevent stale timer events
+    this.sessionState.isActive = false;
+    this.sessionState.lastTimerUpdate = null;
+    console.log('[ChatConnectionManager] Session state reset on disconnect');
     
     this.notifyConnectionStatus('disconnected', reason);
 
@@ -1681,6 +1703,58 @@ class ChatConnectionManager {
         console.error('[ChatConnectionManager] Error in status callback:', error);
       }
     });
+  }
+
+  /**
+   * Process queued messages when connection is established
+   */
+  processMessageQueue() {
+    console.log('[ChatConnectionManager] Processing message queue, items:', this.messageQueue.length);
+    
+    if (!this.socket || !this.socket.connected) {
+      console.log('[ChatConnectionManager] Socket not connected, cannot process message queue');
+      return;
+    }
+    
+    // Process each queued message
+    while (this.messageQueue.length > 0) {
+      const queuedMessage = this.messageQueue.shift();
+      try {
+        console.log('[ChatConnectionManager] Processing queued message:', queuedMessage);
+        
+        // Emit the queued message
+        if (queuedMessage.event && queuedMessage.data) {
+          this.socket.emit(queuedMessage.event, queuedMessage.data);
+        }
+      } catch (error) {
+        console.error('[ChatConnectionManager] Error processing queued message:', error);
+      }
+    }
+    
+    console.log('[ChatConnectionManager] Message queue processing completed');
+  }
+
+  /**
+   * Flush (send) all queued messages
+   * Alias for processMessageQueue for backward compatibility
+   */
+  flushMessageQueue() {
+    console.log('[ChatConnectionManager] Flushing message queue');
+    this.processMessageQueue();
+  }
+
+  /**
+   * Add message to queue when socket is not connected
+   */
+  queueMessage(event, data) {
+    console.log('[ChatConnectionManager] Queueing message:', { event, data });
+    this.messageQueue.push({ event, data, timestamp: Date.now() });
+    
+    // Limit queue size to prevent memory issues
+    if (this.messageQueue.length > 100) {
+      console.warn('[ChatConnectionManager] Message queue size exceeded, removing oldest messages');
+      this.messageQueue = this.messageQueue.slice(-50); // Keep last 50 messages
+    }
   }
 
   /**

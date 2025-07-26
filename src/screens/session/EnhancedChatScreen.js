@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -14,15 +14,83 @@ import {
   Keyboard,
   TouchableWithoutFeedback,
   SafeAreaView,
+  AppState,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { CommonActions } from '@react-navigation/native';
+import { CommonActions, useFocusEffect } from '@react-navigation/native';
 import ChatConnectionManager from '../../utils/ChatConnectionManager';
+import LocalSessionTimer from '../../utils/LocalSessionTimer';
+import GlobalTimerState from '../../utils/GlobalTimerState';
 
 const { width, height } = Dimensions.get('window');
 
+// Utility function to format time
+const formatTime = (seconds) => {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+};
+
 const EnhancedChatScreen = ({ route, navigation }) => {
+  // 🚨 ULTIMATE REMOUNT PREVENTION - Singleton pattern
+  const guardBookingId = route?.params?.bookingId;
+  const guardSessionId = route?.params?.sessionId;
+  const guardAstrologerId = route?.params?.astrologerId;
+  
+  // Create a stable instance key based on critical props
+  const instanceKey = `${guardBookingId}_${guardSessionId}_${guardAstrologerId}`;
+  
+  // Global initialization registry to prevent re-initialization
+  if (!global.enhancedChatInitialized) {
+    global.enhancedChatInitialized = new Map();
+  }
+  
+  // Check if this session has already been initialized
+  const isAlreadyInitialized = global.enhancedChatInitialized.get(instanceKey);
+  
+  // Track render count for debugging
+  if (!global.enhancedChatRenderCount) {
+    global.enhancedChatRenderCount = new Map();
+  }
+  const currentRenderCount = (global.enhancedChatRenderCount.get(instanceKey) || 0) + 1;
+  global.enhancedChatRenderCount.set(instanceKey, currentRenderCount);
+  
+  console.log('🎆 [ULTIMATE-GUARD] Render attempt #' + currentRenderCount + ' for:', instanceKey);
+  console.log('🎆 [ULTIMATE-GUARD] Already initialized:', isAlreadyInitialized);
+  
   console.log('🔴 [ASTROLOGER-APP] ===== ENHANCED CHAT SCREEN COMPONENT MOUNTING =====');
+  
+  // Generate a unique component ID for this instance
+  const componentId = useRef(`enhanced_chat_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`).current;
+  console.log('🔴 [ASTROLOGER-APP] Component ID:', componentId);
+  console.log('🔴 [ASTROLOGER-APP] Instance Key:', instanceKey);
+  console.log('🔴 [ASTROLOGER-APP] Render #' + currentRenderCount + ' for session');
+  
+  // Enhanced mounting guard using global state to prevent duplicate initialization
+  const mountingGuardRef = useRef(isAlreadyInitialized || false);
+  const initializationCompleteRef = useRef(isAlreadyInitialized || false);
+  const chatManagerInitializedRef = useRef(isAlreadyInitialized || false);
+  
+  // If already initialized globally, skip all initialization logic
+  if (isAlreadyInitialized) {
+    console.log('🚨 [ULTIMATE-GUARD] Session already initialized globally, skipping all init logic');
+    console.log('🚨 [ULTIMATE-GUARD] Render #' + currentRenderCount + ' - using existing state');
+    
+    // Set all guards to prevent any initialization
+    mountingGuardRef.current = true;
+    initializationCompleteRef.current = true;
+    chatManagerInitializedRef.current = true;
+  } else {
+    console.log('🎆 [ULTIMATE-GUARD] First initialization for session:', instanceKey);
+    // Mark as initialized globally
+    global.enhancedChatInitialized.set(instanceKey, true);
+  }
+  
+  console.log('🔴 [ASTROLOGER-APP] Mounting guard status:', mountingGuardRef.current);
+  console.log('🔴 [ASTROLOGER-APP] Initialization complete:', initializationCompleteRef.current);
+  console.log('🚨 [REMOUNT-DEBUG] Component mount timestamp:', Date.now());
+  console.log('🚨 [REMOUNT-DEBUG] Mount count for this session:', (global.enhancedChatMountCount = (global.enhancedChatMountCount || 0) + 1));
+  console.log('🚨 [REMOUNT-DEBUG] Stack trace:', new Error().stack?.split('\n').slice(0, 5));
   console.log('🔴 [ASTROLOGER-APP] Route object:', route);
   console.log('🔴 [ASTROLOGER-APP] Route params:', route?.params);
   
@@ -37,6 +105,16 @@ const EnhancedChatScreen = ({ route, navigation }) => {
     userInfo: routeUserInfo
   } = route.params || {};
   
+  // 🚨 DEBUG: Track props changes that might cause remounts
+  const propsHash = JSON.stringify({ bookingId, astrologerId, sessionId, isFreeChat, freeChatId });
+  const prevPropsRef = useRef(propsHash);
+  if (prevPropsRef.current !== propsHash) {
+    console.log('🚨 [REMOUNT-DEBUG] 🚨 PROPS CHANGED - POTENTIAL REMOUNT CAUSE!');
+    console.log('🚨 [REMOUNT-DEBUG] Previous props:', prevPropsRef.current);
+    console.log('🚨 [REMOUNT-DEBUG] New props:', propsHash);
+    prevPropsRef.current = propsHash;
+  }
+  
   console.log('🔴 [ASTROLOGER-APP] Extracted params:');
   console.log('🔴 [ASTROLOGER-APP] - bookingId:', bookingId);
   console.log('🔴 [ASTROLOGER-APP] - astrologerId:', astrologerId);
@@ -46,13 +124,8 @@ const EnhancedChatScreen = ({ route, navigation }) => {
   console.log('🔴 [ASTROLOGER-APP] - freeChatId:', freeChatId);
   console.log('🔴 [ASTROLOGER-APP] - routeUserInfo:', routeUserInfo);
   
-  // Detect free chat session
-  const isFreeChatSession = isFreeChat || (routeBookingDetails && routeBookingDetails.isFreeChat);
-  const actualFreeChatId = freeChatId || (routeBookingDetails && routeBookingDetails.freeChatId) || (isFreeChatSession ? bookingId : null);
-  
-  console.log('🔴 [ASTROLOGER-APP] Session type detection:');
-  console.log('🔴 [ASTROLOGER-APP] - isFreeChatSession:', isFreeChatSession);
-  console.log('🔴 [ASTROLOGER-APP] - actualFreeChatId:', actualFreeChatId);
+  // Session type detection will be calculated inside useEffect to prevent remounts
+  console.log('🔴 [ASTROLOGER-APP] Session type detection will be calculated in ChatConnectionManager useEffect');
   
   // State management
   const [messages, setMessages] = useState([]);
@@ -69,12 +142,210 @@ const EnhancedChatScreen = ({ route, navigation }) => {
   const [userInfo, setUserInfo] = useState(null);
   const [bookingDetails, setBookingDetails] = useState(null);
   
+  // Global timer state for frontend display (prevents resets on remount)
+  // Initialize with current GlobalTimerState data to prevent flicker
+  const [timerData, setTimerData] = useState(() => {
+    if (sessionId) {
+      const globalData = GlobalTimerState.getTimerData(sessionId);
+      console.log('🎨 [TIMER-INIT] Initializing timer state with global data:', globalData);
+      return {
+        ...globalData,
+        elapsedSeconds: globalData.elapsed,
+        isCountdown: false,
+        remainingSeconds: 0,
+        currentAmount: 0,
+        currency: '₹'
+      };
+    }
+    return {
+      isActive: false,
+      elapsed: 0,
+      elapsedSeconds: 0,
+      isCountdown: false,
+      remainingSeconds: 0,
+      currentAmount: 0,
+      currency: '₹'
+    };
+  });
+  
+  // Get persistent timer data from GlobalTimerState
+  const getGlobalTimerData = useCallback(() => {
+    if (sessionId) {
+      return GlobalTimerState.getTimerData(sessionId);
+    }
+    return { isActive: false, elapsed: 0 };
+  }, [sessionId]);
+  
   // Refs
   const chatManagerRef = useRef(null);
   const flatListRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const messageIdCounter = useRef(0);
   const timerRef = useRef(null);
+  const lastTimerUpdateRef = useRef(0); // Track last timer update to prevent flicker
+
+  // Global timer callbacks with enhanced flicker prevention and reduced re-renders
+  const handleGlobalTimerTick = useCallback((elapsed) => {
+    // Always update the ref immediately (no re-render)
+    const formattedTime = formatTime(elapsed);
+    timerDisplayRef.current = { time: formattedTime, elapsed };
+    
+    // Only update component state every 5 seconds or for first few seconds to reduce re-renders
+    const shouldUpdateState = elapsed <= 5 || elapsed % 5 === 0;
+    
+    if (!shouldUpdateState) {
+      // Log every 10 seconds to reduce console noise
+      if (elapsed % 10 === 0) {
+        console.log('🔄 [TIMER] Tick (ref only):', elapsed);
+      }
+      return;
+    }
+    
+    const now = Date.now();
+    // Throttle state updates to prevent excessive re-renders (max 1 update per 800ms)
+    if (now - lastTimerUpdateRef.current < 800) {
+      return;
+    }
+    
+    console.log('🔄 [TIMER] GlobalTimerState tick with state update:', elapsed);
+    
+    setTimerData(prev => {
+      // Enhanced flicker prevention - check for meaningful changes
+      if (prev.elapsedSeconds === elapsed && prev.isActive === true) {
+        console.log('⏭️ [TIMER] Skipping duplicate timer update');
+        return prev;
+      }
+      
+      console.log('✅ [TIMER] Updating timer state:', { elapsed, isActive: true });
+      lastTimerUpdateRef.current = now;
+      return {
+        ...prev,
+        elapsed: elapsed,
+        elapsedSeconds: elapsed,
+        isActive: true
+      };
+    });
+  }, []); // EMPTY DEPENDENCY ARRAY - STABLE
+
+  const handleGlobalTimerWarning = useCallback(() => {
+    console.log(`⚠️ [GLOBAL-TIMER] Timer warning at 3 minutes`);
+    Alert.alert('Session Warning', '⚠️ 3 minutes elapsed! Session will end soon.');
+  }, []); // STABLE - NO DEPENDENCIES
+
+  const handleGlobalTimerEnd = useCallback(() => {
+    console.log(`⏹️ [GLOBAL-TIMER] Timer ended at 5 minutes`);
+    Alert.alert('Session Completed', '⏰ Session time completed!');
+    // Handle session end logic here
+  }, []); // STABLE - NO DEPENDENCIES
+
+  // Simple timer functions (now using GlobalTimerState)
+  const startSimpleTimer = useCallback(() => {
+    if (!sessionId) return;
+    
+    console.log(`▶️ [GLOBAL-TIMER] Starting timer for session ${sessionId}`);
+    
+    // Register this component instance with GlobalTimerState
+    GlobalTimerState.registerInstance(sessionId, componentId, {
+      onTick: handleGlobalTimerTick,
+      onWarning: handleGlobalTimerWarning,
+      onEnd: handleGlobalTimerEnd
+    });
+    
+    // Start the global timer
+    GlobalTimerState.startTimer(sessionId);
+    
+    // Update local state to reflect current global state
+    const globalData = GlobalTimerState.getTimerData(sessionId);
+    setTimerData({
+      ...globalData,
+      elapsedSeconds: globalData.elapsed, // Add elapsedSeconds for display compatibility
+      isCountdown: false,
+      remainingSeconds: 0,
+      currentAmount: 0,
+      currency: '₹'
+    });
+  }, [sessionId, handleGlobalTimerTick, handleGlobalTimerWarning, handleGlobalTimerEnd]);
+
+  const stopSimpleTimer = useCallback(() => {
+    if (!sessionId) return;
+    
+    console.log(` [GLOBAL-TIMER] Stopping timer for session ${sessionId}`);
+    console.log(`⏹️ [GLOBAL-TIMER] Stopping timer for session ${sessionId}`);
+    GlobalTimerState.stopTimer(sessionId);
+    
+    setTimerData(prev => ({ ...prev, isActive: false }));
+  }, [sessionId]);
+
+  // Immediate timer sync on component mount to prevent flicker
+  useEffect(() => {
+    if (!sessionId) return;
+    
+    // Immediately sync with GlobalTimerState to prevent display flicker
+    const globalData = GlobalTimerState.getTimerData(sessionId);
+    console.log('🎨 [TIMER-SYNC] Immediate timer sync on mount:', globalData);
+    
+    if (globalData.isActive || globalData.elapsed > 0) {
+      setTimerData({
+        ...globalData,
+        elapsedSeconds: globalData.elapsed,
+        isCountdown: false,
+        remainingSeconds: 0,
+        currentAmount: 0,
+        currency: '₹'
+      });
+      
+      // Register this instance if timer is active
+      if (globalData.isActive) {
+        GlobalTimerState.registerInstance(sessionId, componentId, {
+          onTick: handleGlobalTimerTick,
+          onWarning: handleGlobalTimerWarning,
+          onEnd: handleGlobalTimerEnd
+        });
+      }
+    }
+  }, [sessionId, componentId]); // Run once on mount when sessionId is available
+  
+  // Start/stop global timer when session becomes active/inactive
+  useEffect(() => {
+    if (!sessionId) return;
+    
+    if (sessionActive) {
+      // Check if timer is already running in GlobalTimerState
+      const globalData = GlobalTimerState.getTimerData(sessionId);
+      
+      if (!globalData.isActive) {
+        console.log('🔴 [ASTROLOGER-APP] Starting global timer for active session');
+        console.log('🔴 [ASTROLOGER-APP] Component ID:', componentId);
+        startSimpleTimer();
+      } else {
+        console.log('🔴 [ASTROLOGER-APP] Global timer already running, registering instance');
+        // Register this instance with the already running timer
+        GlobalTimerState.registerInstance(sessionId, componentId, {
+          onTick: handleGlobalTimerTick,
+          onWarning: handleGlobalTimerWarning,
+          onEnd: handleGlobalTimerEnd
+        });
+        
+        // Update local state to reflect current global state
+        setTimerData({
+          ...globalData,
+          elapsedSeconds: globalData.elapsed, // Add elapsedSeconds for display compatibility
+          isCountdown: false,
+          remainingSeconds: 0,
+          currentAmount: 0,
+          currency: '₹'
+        });
+      }
+    } else {
+      console.log('🔴 [ASTROLOGER-APP] Session not active, ensuring timer is stopped');
+      // Don't stop the global timer here - let it continue for other instances
+      // Just update local state
+      setTimerData(prev => ({ ...prev, isActive: false }));
+    }
+  }, [sessionActive, sessionId, handleGlobalTimerTick, handleGlobalTimerWarning, handleGlobalTimerEnd]); // Include callback dependencies
+
+  // Removed force activate timer as it was causing timer resets
+  // Timer should be activated naturally through backend events and session state
 
   // Function to fetch booking details with user information
   const fetchBookingDetails = useCallback(async () => {
@@ -125,6 +396,195 @@ const EnhancedChatScreen = ({ route, navigation }) => {
     }
   }, [bookingId]);
 
+  // Frontend timer management functions
+  const handleTimerTick = useCallback((data) => {
+    console.log('🔴 [ASTROLOGER-APP] Frontend timer tick:', data);
+    setTimerData({
+      isActive: true,
+      elapsedSeconds: data.elapsedSeconds,
+      remainingSeconds: data.remainingSeconds,
+      isCountdown: data.isCountdown,
+      currentAmount: data.currentAmount?.toFixed(2) || '0.00',
+      currency: '₹',
+      warnings: data.warnings || []
+    });
+  }, []);
+
+  const handleTimerWarning = useCallback((data) => {
+    console.log('🔴 [ASTROLOGER-APP] Frontend timer warning:', data);
+    Alert.alert(
+      'Session Warning',
+      `${data.message}\n\nTime remaining: ${Math.floor(data.remainingSeconds / 60)}:${(data.remainingSeconds % 60).toString().padStart(2, '0')}`,
+      [{ text: 'OK' }]
+    );
+  }, []);
+
+  const handleTimerEnd = useCallback(async () => {
+    console.log('🔴 [ASTROLOGER-APP] Frontend timer ended - auto-ending session');
+    
+    // Update timer state to inactive
+    setTimerData(prev => ({ ...prev, isActive: false }));
+    
+    // End session via socket
+    if (chatManagerRef.current?.socket) {
+      console.log('🔴 [ASTROLOGER-APP] Emitting end_session via socket');
+      chatManagerRef.current.socket.emit('end_session', {
+        bookingId,
+        sessionId,
+        astrologerId,
+        reason: 'timer_expired'
+      });
+    }
+    
+    // Show session ended alert
+    Alert.alert(
+      'Session Ended',
+      'The consultation session has ended due to time expiry.',
+      [
+        {
+          text: 'OK',
+          onPress: () => {
+            navigation.dispatch(
+              CommonActions.reset({
+                index: 0,
+                routes: [{ name: 'Main' }],
+              })
+            );
+          }
+        }
+      ]
+    );
+  }, [bookingId, sessionId, astrologerId, navigation]);
+
+  const startFrontendTimer = useCallback((sessionData) => {
+    console.log('🔴 [ASTROLOGER-APP] Starting frontend timer with data:', sessionData);
+    
+    try {
+      LocalSessionTimer.startTimer({
+        sessionId: sessionData.sessionId,
+        startTime: sessionData.startTime,
+        totalDurationMinutes: sessionData.totalDurationMinutes,
+        walletBalance: sessionData.walletBalance,
+        ratePerMinute: sessionData.ratePerMinute,
+        onTick: handleTimerTick,
+        onWarning: handleTimerWarning,
+        onEnd: handleTimerEnd
+      });
+      
+      console.log('🔴 [ASTROLOGER-APP] Frontend timer started successfully');
+    } catch (error) {
+      console.error('🔴 [ASTROLOGER-APP] Failed to start frontend timer:', error);
+    }
+  }, [handleTimerTick, handleTimerWarning, handleTimerEnd]);
+
+  const stopFrontendTimer = useCallback(() => {
+    console.log('🔴 [ASTROLOGER-APP] Stopping frontend timer');
+    LocalSessionTimer.stopTimer();
+    setTimerData(prev => ({ ...prev, isActive: false }));
+    
+    // Stop global timer if this session is active
+    if (sessionId) {
+      GlobalTimerState.stopTimer(sessionId);
+    }
+  }, [sessionId]);
+
+  const handleManualEndSession = useCallback(async () => {
+    console.log('🔴 [ASTROLOGER-APP] Manual session end triggered');
+    
+    Alert.alert(
+      'End Session',
+      'Are you sure you want to end this consultation?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'End Session',
+          style: 'destructive',
+          onPress: () => {
+            // Stop frontend timer
+            stopFrontendTimer();
+            
+            // End session via socket
+            if (chatManagerRef.current?.socket) {
+              console.log('🔴 [ASTROLOGER-APP] Emitting end_session via socket');
+              chatManagerRef.current.socket.emit('end_session', {
+                bookingId,
+                sessionId,
+                astrologerId,
+                reason: 'manual_end'
+              });
+            }
+          }
+        }
+      ]
+    );
+  }, [bookingId, sessionId, astrologerId, stopFrontendTimer]);
+
+  // AppState handling for background/foreground transitions
+  useEffect(() => {
+    const handleAppStateChange = (nextAppState) => {
+      console.log('🔴 [ASTROLOGER-APP] App state changed:', nextAppState);
+      
+      if (nextAppState === 'active' && sessionActive && chatManagerRef.current) {
+        console.log('🔴 [ASTROLOGER-APP] App returned to foreground - requesting timer sync');
+        
+        // Request session state sync to ensure timer is accurate
+        if (chatManagerRef.current.socket && chatManagerRef.current.socket.connected) {
+          console.log('🔴 [ASTROLOGER-APP] Requesting session state sync after foreground');
+          chatManagerRef.current.socket.emit('get_session_state', {
+            bookingId: bookingId,
+            sessionId: sessionId,
+            astrologerId: astrologerId,
+            isFreeChat: isFreeChatSession,
+            freeChatId: actualFreeChatId
+          });
+        }
+        
+        // Also request timer sync specifically
+        setTimeout(() => {
+          if (chatManagerRef.current?.socket?.connected) {
+            console.log('🔴 [ASTROLOGER-APP] Requesting timer sync after foreground delay');
+            chatManagerRef.current.socket.emit('sync_timer', {
+              bookingId: bookingId,
+              sessionId: sessionId
+            });
+          }
+        }, 1000);
+      }
+    };
+    
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    
+    return () => {
+      subscription?.remove();
+    };
+  }, [bookingId, sessionId, astrologerId]); // 🔧 CRITICAL FIX: Removed sessionActive and computed values to prevent rapid remounting
+
+  // Focus effect to resume timer when screen gains focus
+  useFocusEffect(
+    useCallback(() => {
+      console.log('🔴 [ASTROLOGER-APP] Screen gained focus - checking timer state');
+      
+      if (sessionId) {
+        // Resume global timer if it exists
+        const resumed = GlobalTimerState.resumeTimer(sessionId, {
+          onTick: handleGlobalTimerTick,
+          onWarning: handleGlobalTimerWarning,
+          onEnd: handleGlobalTimerEnd
+        });
+        
+        if (resumed) {
+          console.log('🔴 [ASTROLOGER-APP] Global timer resumed successfully');
+        } else {
+          console.log('🔴 [ASTROLOGER-APP] No global timer to resume');
+        }
+        
+        // Update local state with current global timer data
+        const globalData = GlobalTimerState.getTimerData(sessionId);
+        setTimerData(globalData);
+      }
+    }, [sessionId]) // 🔧 CRITICAL FIX: Removed callback dependencies to prevent rapid remounting
+  );
+
   // Component lifecycle logging
   useEffect(() => {
     console.log('🔴 [ASTROLOGER-APP] ===== ENHANCED CHAT SCREEN MOUNTED =====');
@@ -150,106 +610,125 @@ const EnhancedChatScreen = ({ route, navigation }) => {
     return () => {
       console.log('🔴 [ASTROLOGER-APP] ===== ENHANCED CHAT SCREEN UNMOUNTING =====');
     };
-  }, [routeBookingDetails, fetchBookingDetails]);
+  }, []); // 🔧 CRITICAL FIX: Run only once on mount to prevent remounting from route changes
 
-  // Initialize chat connection manager
+  // ChatConnectionManager initialization and setup
   useEffect(() => {
-    const initializeChat = async () => {
+    console.log('🔴 [ASTROLOGER-APP] ===== INITIALIZING CHAT CONNECTION MANAGER =====');
+    console.log('🚨 [REMOUNT-DEBUG] ChatConnectionManager useEffect triggered');
+    console.log('🚨 [REMOUNT-DEBUG] Stable dependencies:', { bookingId, astrologerId, sessionId });
+    console.log('🔴 [ASTROLOGER-APP] Component ID:', componentId);
+    
+    // Strong guard against multiple initializations
+    if (mountingGuardRef.current || chatManagerInitializedRef.current) {
+      console.log('🔴 [ASTROLOGER-APP] ⚠️ Skipping initialization - already mounting or initialized');
+      return;
+    }
+    
+    // Calculate computed values inside the effect to avoid dependency issues
+    const currentIsFreeChat = isFreeChat || (routeBookingDetails && routeBookingDetails.isFreeChat);
+    const currentFreeChatId = freeChatId || (routeBookingDetails && routeBookingDetails.freeChatId) || (currentIsFreeChat ? bookingId : null);
+    
+    if (!bookingId && !currentFreeChatId) {
+      console.error('🔴 [ASTROLOGER-APP] ❌ Missing required booking/session ID');
+      return;
+    }
+    
+    if (!astrologerId) {
+      console.error('🔴 [ASTROLOGER-APP] ❌ Missing astrologer ID');
+      return;
+    }
+    
+    // Set both guards to prevent duplicate initialization
+    mountingGuardRef.current = true;
+    chatManagerInitializedRef.current = true;
+    
+    const initializeChatManager = async () => {
       try {
-        console.log('🔴 [ASTROLOGER-APP] ===== INITIALIZING CHAT =====');
-        console.log('🔴 [ASTROLOGER-APP] BookingId:', bookingId);
-        console.log('🔴 [ASTROLOGER-APP] AstrologerId:', astrologerId);
-        console.log('🔴 [ASTROLOGER-APP] SessionId:', sessionId);
-        
+        // Get astrologer data for initialization
         const astrologerData = await AsyncStorage.getItem('astrologerData');
         const parsedData = astrologerData ? JSON.parse(astrologerData) : null;
         const currentAstrologerId = parsedData?.id || astrologerId;
         
-        console.log('🔴 [ASTROLOGER-APP] Current astrologer ID:', currentAstrologerId);
-        console.log('🔴 [ASTROLOGER-APP] Parsed astrologer data:', parsedData);
-
-        console.log('🔴 [ASTROLOGER-APP] Creating ChatConnectionManager...');
+        if (!currentAstrologerId) {
+          console.error('🔴 [ASTROLOGER-APP] No astrologer ID available for chat initialization');
+          return;
+        }
+        
+        console.log('🔴 [ASTROLOGER-APP] Creating ChatConnectionManager instance');
+        
+        // Create ChatConnectionManager instance
         chatManagerRef.current = new ChatConnectionManager();
-        console.log('🔴 [ASTROLOGER-APP] ChatConnectionManager created successfully');
         
-        // Set up event listeners with logging
-        console.log('🔴 [ASTROLOGER-APP] Setting up event listeners...');
-        const unsubscribeConnection = chatManagerRef.current.onConnectionStatus((status) => {
-          console.log('🔴 [ASTROLOGER-APP] Connection status callback triggered:', status);
-          handleConnectionStatus(status);
-        });
-        const unsubscribeMessage = chatManagerRef.current.onMessage((message) => {
-          console.log('🔴 [ASTROLOGER-APP] Message callback triggered:', message);
-          handleNewMessage(message);
-        });
-        const unsubscribeTyping = chatManagerRef.current.onTyping((isTyping, data) => {
-          console.log('🔴 [ASTROLOGER-APP] Typing callback triggered:', { isTyping, data });
-          handleTypingStatus(isTyping, data);
-        });
-        const unsubscribeStatus = chatManagerRef.current.onStatusUpdate((data) => {
-          console.log('🔴 [ASTROLOGER-APP] Status update callback triggered:', data);
-          handleStatusUpdate(data);
-        });
-        console.log('🔴 [ASTROLOGER-APP] Event listeners set up successfully');
-
-        // Initialize connection with free chat support
-        console.log('🔴 [ASTROLOGER-APP] Initializing ChatConnectionManager...');
-        console.log('🔴 [ASTROLOGER-APP] Session type:', isFreeChatSession ? 'FREE CHAT' : 'REGULAR BOOKING');
+        // Set up callbacks for connection status updates
+        chatManagerRef.current.onConnectionStatus(handleConnectionStatus);
         
-        const initOptions = {};
-        if (isFreeChatSession) {
-          initOptions.isFreeChat = true;
-          initOptions.freeChatId = actualFreeChatId;
-          initOptions.sessionId = sessionId;
-          console.log('🔴 [ASTROLOGER-APP] Free chat initialization options:', initOptions);
-        }
+        // Set up callbacks for new messages
+        chatManagerRef.current.onMessage(handleNewMessage);
         
-        await chatManagerRef.current.initialize(bookingId, currentAstrologerId, null, initOptions);
-        console.log('🔴 [ASTROLOGER-APP] ChatConnectionManager initialized successfully');
+        // Set up callbacks for typing status
+        chatManagerRef.current.onTyping(handleTypingStatus);
         
-        // Note: Room joining is handled automatically by ChatConnectionManager.handleConnect()
-        console.log('🔴 [ASTROLOGER-APP] Room will be joined automatically when socket connects');
-
-        // Start session timer if sessionId is provided
-        if (sessionId) {
-          console.log('🔴 [ASTROLOGER-APP] Starting session timer for sessionId:', sessionId);
-          chatManagerRef.current.startSessionTimer(sessionId);
-        } else {
-          console.log('🔴 [ASTROLOGER-APP] No sessionId provided, skipping timer start');
-        }
-
-        console.log('🔴 [ASTROLOGER-APP] Chat initialization completed successfully');
-
-        return () => {
-          console.log('🔴 [ASTROLOGER-APP] Cleaning up event listeners');
-          unsubscribeConnection();
-          unsubscribeMessage();
-          unsubscribeTyping();
-          unsubscribeStatus();
+        // Set up callbacks for status updates (timer, session events, etc.)
+        chatManagerRef.current.onStatusUpdate(handleStatusUpdate);
+        
+        console.log('🔴 [ASTROLOGER-APP] ChatConnectionManager callbacks configured');
+        
+        // Initialize the connection manager with correct parameter order
+        // astrologer-app ChatConnectionManager.initialize(bookingId, astrologerId, userId, options)
+        const initOptions = {
+          isFreeChat: currentIsFreeChat,
+          sessionId: sessionId,
+          freeChatId: currentFreeChatId
         };
+        
+        console.log('🔴 [ASTROLOGER-APP] Initializing ChatConnectionManager with options:', initOptions);
+        
+        await chatManagerRef.current.initialize(
+          bookingId || currentFreeChatId, // bookingId parameter
+          currentAstrologerId, // astrologerId parameter
+          null, // userId parameter (not needed for astrologer)
+          initOptions // options parameter
+        );
+        
+        console.log('🔴 [ASTROLOGER-APP] ✅ ChatConnectionManager initialized successfully');
+        
+        // Mark initialization as complete to allow message processing
+        initializationCompleteRef.current = true;
+        
       } catch (error) {
-        console.error('🔴 [ASTROLOGER-APP] Failed to initialize chat:', error);
-        console.error('🔴 [ASTROLOGER-APP] Error stack:', error.stack);
-        Alert.alert('Error', 'Failed to initialize chat connection');
+        console.error('🔴 [ASTROLOGER-APP] ❌ Failed to initialize ChatConnectionManager:', error);
+        setConnectionStatus('failed');
+        setConnectionMessage('Failed to initialize chat connection');
+        // Reset initialization flag on error
+        initializationCompleteRef.current = false;
       }
     };
-
-    initializeChat();
-
+    
+    // Initialize chat manager
+    initializeChatManager();
+    
+    // Cleanup on unmount
     return () => {
-      // Note: We don't disconnect the ChatConnectionManager here to maintain
-      // socket connection for consecutive bookings. The socket should only
-      // disconnect when the astrologer logs out or exits the app completely.
-      console.log('🟡 [ASTROLOGER-APP] EnhancedChatScreen cleanup - keeping socket connected for consecutive bookings');
+      console.log('🔴 [ASTROLOGER-APP] Cleaning up ChatConnectionManager');
+      console.log('🔴 [ASTROLOGER-APP] Component ID:', componentIdRef.current);
       
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
+      // Unregister from GlobalTimerState
+      if (sessionId) {
+        GlobalTimerState.unregisterInstance(sessionId, componentId);
       }
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
+      
+      // Reset all guards to allow re-initialization if component remounts
+      mountingGuardRef.current = false;
+      chatManagerInitializedRef.current = false;
+      initializationCompleteRef.current = false;
+      
+      if (chatManagerRef.current) {
+        chatManagerRef.current.disconnect();
+        chatManagerRef.current = null;
       }
     };
-  }, [bookingId, astrologerId, sessionId]);
+  }, [bookingId, astrologerId, sessionId]); // 🔧 CRITICAL FIX: Only stable, primitive dependencies to prevent remounts
 
   // Handle keyboard events
   useEffect(() => {
@@ -308,7 +787,7 @@ const EnhancedChatScreen = ({ route, navigation }) => {
     }
   }, []);
 
-  // Handle new messages
+  // Handle new messages with enhanced validation
   const handleNewMessage = useCallback((message) => {
     console.log('🔴 [ASTROLOGER-APP] ===== NEW MESSAGE RECEIVED =====');
     console.log('🔴 [ASTROLOGER-APP] Message ID:', message.id);
@@ -317,6 +796,12 @@ const EnhancedChatScreen = ({ route, navigation }) => {
     console.log('🔴 [ASTROLOGER-APP] Message message field:', message.message);
     console.log('🔴 [ASTROLOGER-APP] Message sender:', message.sender);
     console.log('🔴 [ASTROLOGER-APP] Full message object:', JSON.stringify(message, null, 2));
+    
+    // Prevent processing messages during component instability
+    if (!initializationCompleteRef.current) {
+      console.log('🔴 [ASTROLOGER-APP] ⚠️ Skipping message processing - component not fully initialized');
+      return;
+    }
     
     // Extract content with detailed logging
     let extractedContent = '';
@@ -481,25 +966,159 @@ const EnhancedChatScreen = ({ route, navigation }) => {
     );
   }, [sessionId, route.params]);
 
-  // Handle status updates (timer, session end, etc.)
+  // Handle status updates from backend
   const handleStatusUpdate = useCallback((data) => {
-    console.log('🔄 [ASTROLOGER-APP] Status update received:', data);
+    console.log('🔄 [TIMER] Status update received:', data);
     
-    if (data.type === 'timer') {
-      // Use consistent field names with user app - check both durationSeconds and seconds
-      const timerValue = data.durationSeconds !== undefined ? data.durationSeconds : data.seconds;
-      console.log('🔄 [ASTROLOGER-APP] Timer update received:', timerValue);
-      setSessionTimer(timerValue);
+    // 🔍 DEBUG: Check if this is happening around 3-second mark
+    const currentElapsed = data.elapsedSeconds || 0;
+    if (currentElapsed >= 2 && currentElapsed <= 5) {
+      console.log('🚨 [3-SEC-DEBUG] Backend status update at critical timing!');
+      console.log('🚨 [3-SEC-DEBUG] Data received:', JSON.stringify(data, null, 2));
+      console.log('🚨 [3-SEC-DEBUG] Current component state - initialized:', initializationCompleteRef.current);
+    }
+    
+    if (data.type === 'timer' || data.type === 'session_timer') {
+      console.log('🔄 [ASTROLOGER-APP] Backend timer update received:', data);
       
-      // If we're receiving timer updates but session isn't active, activate it
-      if (!sessionActive && timerValue > 0) {
-        setSessionActive(true);
-        setConnectionStatus('session_active');
+      // More flexible timer validation to handle booking ID mismatches
+      const updateBookingId = data.bookingId || data.sessionId;
+      const currentBookingId = bookingId; // Use only the route bookingId
+      
+      console.log('🔄 [ASTROLOGER-APP] Timer validation debug:', {
+        'data.bookingId': data.bookingId,
+        'data.sessionId': data.sessionId,
+        'updateBookingId': updateBookingId,
+        'route.bookingId': bookingId,
+        'currentBookingId': currentBookingId,
+        'astrologerId': astrologerId,
+        'data.astrologerId': data.astrologerId,
+        'strictMatch': updateBookingId === currentBookingId
+      });
+      
+      // Check if this timer update is for the current astrologer and session context
+      let shouldAcceptUpdate = false;
+      
+      // Primary validation: exact booking/session ID match
+      if (updateBookingId && currentBookingId && updateBookingId === currentBookingId) {
+        shouldAcceptUpdate = true;
+        console.log('🔄 [ASTROLOGER-APP] ✅ Timer update accepted - exact ID match');
       }
-    } else if (data.type === 'session_started') {
-      console.log('🔄 [ASTROLOGER-APP] Session started event received');
+      // Secondary validation: same astrologer and we're in an active session
+      else if (data.astrologerId && astrologerId && data.astrologerId === astrologerId && sessionActive) {
+        shouldAcceptUpdate = true;
+        console.log('🔄 [ASTROLOGER-APP] ✅ Timer update accepted - same astrologer, active session');
+        
+        // Update our local booking ID to match the backend
+        console.log('🔄 [ASTROLOGER-APP] Updating local booking ID from', currentBookingId, 'to', updateBookingId);
+      }
+      // Fallback: if we're in a consultation screen and timer is active, accept updates
+      else if (sessionActive && timerData.isActive) {
+        shouldAcceptUpdate = true;
+        console.log('🔄 [ASTROLOGER-APP] ✅ Timer update accepted - active session fallback');
+      }
+      
+      if (!shouldAcceptUpdate) {
+        console.log('🔴 [ASTROLOGER-APP] ❌ Timer update ignored - validation failed:', {
+          currentBookingId,
+          eventBookingId: updateBookingId,
+          astrologerId,
+          eventAstrologerId: data.astrologerId,
+          sessionActive,
+          timerActive: timerData.isActive
+        });
+        return;
+      }
+      
+      // Only sync with backend if there's a significant difference (>2 seconds)
+      // This prevents backend updates from interfering with frontend timer increments
+      setTimerData(prev => {
+        const backendElapsed = data.elapsedSeconds || 0;
+        const frontendElapsed = prev.elapsedSeconds || 0;
+        const timeDifference = Math.abs(backendElapsed - frontendElapsed);
+        
+        // 🚨 DEBUG: Log backend sync attempts around 3-second mark
+        if (backendElapsed >= 2 && backendElapsed <= 6) {
+          console.log('🚨 [3-SEC-DEBUG] Backend sync attempt!');
+          console.log('🚨 [3-SEC-DEBUG] Backend elapsed:', backendElapsed);
+          console.log('🚨 [3-SEC-DEBUG] Frontend elapsed:', frontendElapsed);
+          console.log('🚨 [3-SEC-DEBUG] Time difference:', timeDifference);
+          console.log('🚨 [3-SEC-DEBUG] Timer active:', prev.isActive);
+          console.log('🚨 [3-SEC-DEBUG] Will sync?', (!prev.isActive || timeDifference > 5));
+        }
+        
+        // 🔧 FIXED: Prevent backend sync interference with smooth local timer
+        // Only sync if timer is not active locally OR if there's a major desync (>5 seconds)
+        // This prevents the 3-second flicker caused by backend sync conflicts
+        if (!prev.isActive || timeDifference > 5) {
+          console.log('🔄 [ASTROLOGER-APP] Major timer sync needed:', {
+            backend: backendElapsed,
+            frontend: frontendElapsed,
+            difference: timeDifference,
+            reason: !prev.isActive ? 'timer inactive' : 'major desync'
+          });
+          
+          return {
+            isActive: true,
+            elapsedSeconds: backendElapsed,
+            remainingSeconds: data.remainingSeconds || 0,
+            isCountdown: data.isCountdown || false,
+            currentAmount: data.currentAmount?.toFixed(2) || '0.00',
+            currency: data.currency || '₹',
+            warnings: data.warnings || []
+          };
+        } else {
+          console.log('🔄 [ASTROLOGER-APP] Local timer running smoothly, ignoring backend sync:', {
+            backend: backendElapsed,
+            frontend: frontendElapsed,
+            difference: timeDifference
+          });
+          
+          // Keep local timer state but update non-timer fields only
+          return {
+            ...prev,
+            remainingSeconds: data.remainingSeconds || prev.remainingSeconds,
+            currentAmount: data.currentAmount?.toFixed(2) || prev.currentAmount,
+            currency: data.currency || prev.currency,
+            warnings: data.warnings || prev.warnings
+          };
+        }
+      });
+      
+      console.log('🔄 [ASTROLOGER-APP] Timer synchronized with backend:', {
+        elapsed: data.elapsedSeconds,
+        remaining: data.remainingSeconds,
+        amount: data.currentAmount
+      });
+    } else if (data.type === 'session_started' || data.type === 'user_joined_consultation') {
+      console.log('🔄 [ASTROLOGER-APP] Session activation event received:', data.type);
+      
+      // For user_joined_consultation, verify this is for the current booking
+      if (data.type === 'user_joined_consultation') {
+        const eventBookingId = data.bookingId;
+        const currentBookingId = bookingId || actualFreeChatId;
+        
+        if (eventBookingId !== currentBookingId) {
+          console.log('🔄 [ASTROLOGER-APP] Ignoring user_joined_consultation for different booking:', {
+            eventBookingId,
+            currentBookingId
+          });
+          return;
+        }
+        
+        console.log('🔄 [ASTROLOGER-APP] User joined consultation - activating session');
+      }
+      
       setSessionActive(true);
       setConnectionStatus('session_active');
+      
+      // Start frontend timer with session data
+      if (data.sessionData) {
+        console.log('🔄 [ASTROLOGER-APP] Starting frontend timer with session data:', data.sessionData);
+        startFrontendTimer(data.sessionData);
+      } else {
+        console.warn('🔄 [ASTROLOGER-APP] No session data provided for frontend timer');
+      }
     } else if (data.type === 'session_resumed') {
       console.log('🔄 [ASTROLOGER-APP] Session resumed event received:', data);
       
@@ -507,16 +1126,18 @@ const EnhancedChatScreen = ({ route, navigation }) => {
       setSessionActive(true);
       setConnectionStatus('session_active');
       
-      // Update timer with remaining time from backend
-      if (data.timeRemaining !== undefined) {
-        console.log('🔄 [ASTROLOGER-APP] Updating timer with remaining time:', data.timeRemaining);
-        setSessionTimer(data.timeRemaining);
+      // Resume or start frontend timer with session data
+      if (data.sessionData) {
+        console.log('🔄 [ASTROLOGER-APP] Resuming frontend timer with session data:', data.sessionData);
+        startFrontendTimer(data.sessionData);
+      } else {
+        console.warn('🔄 [ASTROLOGER-APP] No session data provided for frontend timer resume');
       }
       
       // Show a toast or alert to inform the astrologer
       Alert.alert(
         'Session Resumed',
-        'Your free chat session has been resumed after reconnection.',
+        'Your consultation session has been resumed after reconnection.',
         [{ text: 'OK' }]
       );
     } else if (data.type === 'message_history_loaded') {
@@ -530,9 +1151,15 @@ const EnhancedChatScreen = ({ route, navigation }) => {
       console.log('🔴 [ASTROLOGER-APP] Session end received');
       setSessionEnded(true);
       setSessionActive(false);
+      
+      // Stop frontend timer
+      stopFrontendTimer();
+      
+      // Clear legacy timer ref
       if (timerRef.current) {
         clearInterval(timerRef.current);
       }
+      
       Alert.alert(
         'Session Ended',
         'The consultation session has ended.',
@@ -566,7 +1193,10 @@ const EnhancedChatScreen = ({ route, navigation }) => {
       setSessionEnded(true);
       setConnectionStatus('session_ended');
       
-      // Clear timer
+      // Stop frontend timer
+      stopFrontendTimer();
+      
+      // Clear legacy timer
       if (timerRef.current) {
         clearInterval(timerRef.current);
       }
@@ -654,7 +1284,8 @@ const EnhancedChatScreen = ({ route, navigation }) => {
         text: tempMessage.text,
         message: tempMessage.message,
         bookingId: bookingId,
-        sessionId: sessionId || bookingId,
+        // CRITICAL FIX: Use actual sessionId from booking data, not bookingId fallback
+        sessionId: bookingDetails?.sessionId || sessionId || null, // Use proper sessionId from bookingDetails
         senderId: currentAstrologerId,
         senderName: parsedData?.name || 'Astrologer',
         sender: 'astrologer',
@@ -698,6 +1329,17 @@ const EnhancedChatScreen = ({ route, navigation }) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Helper function to format time in MM:SS format
+  const formatTime = (totalSeconds) => {
+    if (typeof totalSeconds !== 'number' || totalSeconds < 0) {
+      return '00:00';
+    }
+    
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   };
 
   // Get connection status color
@@ -816,6 +1458,46 @@ const EnhancedChatScreen = ({ route, navigation }) => {
     Keyboard.dismiss();
   };
 
+  // Timer ref for reducing state updates
+  const timerDisplayRef = useRef({ time: '00:00', elapsed: 0 });
+  const [timerDisplayState, setTimerDisplayState] = useState({ time: '00:00', elapsed: 0 });
+
+  // Optimized timer display with minimal re-renders
+  const timerDisplay = useMemo(() => {
+    // Only update if component is fully initialized to prevent flicker during mounting
+    if (!initializationCompleteRef.current) {
+      return {
+        time: '00:00',
+        label: 'session',
+        billing: '₹0.00'
+      };
+    }
+    
+    const elapsedSeconds = timerData.elapsedSeconds || 0;
+    const formattedTime = timerDisplayRef.current.time;
+    const label = sessionActive && timerData.isActive ? 'elapsed' : 'session';
+    const amount = timerData.currentAmount || '0.00';
+    const currency = timerData.currency || '₹';
+    
+    // Reduce logging frequency to minimize performance impact
+    const shouldLog = elapsedSeconds % 10 === 0; // Log every 10 seconds instead of every second
+    if (shouldLog) {
+      console.log('🎨 [TIMER-DISPLAY] Timer display updated (10s interval):', {
+        elapsedSeconds,
+        formattedTime,
+        sessionActive,
+        timerIsActive: timerData.isActive
+      });
+    }
+    
+    return {
+      time: formattedTime,
+      label,
+      billing: `${currency}${amount}`,
+      elapsedSeconds // Track for change detection
+    };
+  }, [timerData.elapsedSeconds, timerData.isActive, timerData.currentAmount, timerData.currency, sessionActive]);
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
@@ -851,14 +1533,23 @@ const EnhancedChatScreen = ({ route, navigation }) => {
               </Text>
             </View>
           )}
+          {/* Timer display */}
           <View style={styles.timerContainer}>
-            <Text style={styles.timerText}>{formatTimer(sessionTimer)}</Text>
+            <Text style={styles.timerText}>
+              {timerDisplay.time}
+            </Text>
+            <Text style={styles.timerLabel}>
+              {timerDisplay.label}
+            </Text>
+            <Text style={styles.billingText}>
+              {timerDisplay.billing}
+            </Text>
           </View>
         </View>
         
         <TouchableOpacity 
           style={styles.endButton}
-          onPress={handleEndSession}
+          onPress={handleManualEndSession}
         >
           <Text style={styles.endButtonText}>End</Text>
         </TouchableOpacity>
@@ -990,6 +1681,19 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: 'bold',
+  },
+  timerLabel: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.8)',
+    marginTop: 2,
+    textAlign: 'center',
+  },
+  billingText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#FFF',
+    textAlign: 'center',
+    marginTop: 2,
   },
   endButton: {
     backgroundColor: '#EF4444',
@@ -1173,4 +1877,45 @@ const styles = StyleSheet.create({
   },
 });
 
-export default EnhancedChatScreen;
+// 🔧 CRITICAL FIX: Memoize component to prevent external remount triggers
+// Enhanced comparison function with comprehensive debugging
+const arePropsEqual = (prevProps, nextProps) => {
+  console.log('🔍 [MEMO-DEBUG] React.memo comparison called');
+  
+  // Compare route params that matter for this component
+  const prevParams = prevProps.route?.params || {};
+  const nextParams = nextProps.route?.params || {};
+  
+  console.log('🔍 [MEMO-DEBUG] Prev params:', JSON.stringify(prevParams));
+  console.log('🔍 [MEMO-DEBUG] Next params:', JSON.stringify(nextParams));
+  
+  const criticalProps = ['bookingId', 'astrologerId', 'sessionId', 'isFreeChat', 'freeChatId'];
+  
+  for (const prop of criticalProps) {
+    if (prevParams[prop] !== nextParams[prop]) {
+      console.log('🚨 [MEMO-DEBUG] Props changed for:', prop, 'prev:', prevParams[prop], 'next:', nextParams[prop]);
+      return false; // Props changed, allow re-render
+    }
+  }
+  
+  // Compare route key (if it changes, it's a new navigation)
+  if (prevProps.route?.key !== nextProps.route?.key) {
+    console.log('🚨 [MEMO-DEBUG] Route key changed:', prevProps.route?.key, '->', nextProps.route?.key);
+    return false;
+  }
+  
+  // Compare navigation state more thoroughly
+  const prevNavState = prevProps.navigation?.getState?.();
+  const nextNavState = nextProps.navigation?.getState?.();
+  
+  if (prevNavState?.index !== nextNavState?.index) {
+    console.log('🚨 [MEMO-DEBUG] Navigation index changed:', prevNavState?.index, '->', nextNavState?.index);
+    return false;
+  }
+  
+  // For now, let's be very conservative and block ALL re-renders unless critical props change
+  console.log('✅ [MEMO-DEBUG] Props are equal, preventing re-render');
+  return true; // Props are equal, prevent re-render
+};
+
+export default React.memo(EnhancedChatScreen, arePropsEqual);

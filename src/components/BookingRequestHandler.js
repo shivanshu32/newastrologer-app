@@ -645,7 +645,7 @@ const BookingRequestHandler = () => {
     // Listen for booking status updates - navigate to WaitingRoom when accepted
     socket.on('booking_status_update', (data) => {
       console.log('🔥🔥🔥 [ASTROLOGER-APP] booking_status_update event received! 🔥🔥🔥');
-      console.log(' [DEBUG] Raw event data:', JSON.stringify(data, null, 2));
+     // console.log(' [DEBUG] Raw event data:', JSON.stringify(data, null, 2));
       console.log(' [DEBUG] Socket ID:', socket?.id);
       console.log(' [DEBUG] Socket connected:', socket?.connected);
       console.log(' [DEBUG] Event timestamp:', new Date().toISOString());
