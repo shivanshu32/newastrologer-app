@@ -2,12 +2,13 @@ import React, { useContext, useState, useEffect } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity, Platform } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { SocketContext } from '../context/SocketContext';
 import navigationConfig from './NavigationConfig';
 import BookingRequestHandler from '../components/BookingRequestHandler';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Temporary test component
 const TestHomeScreen = () => (
@@ -37,6 +38,8 @@ const Stack = createNativeStackNavigator();
 
 // Stack navigator for Home tab
 const HomeStack = ({ navigation, route }) => {
+  const insets = useSafeAreaInsets();
+  
   return (
     <Stack.Navigator
       screenOptions={{
@@ -56,8 +59,9 @@ const HomeStack = ({ navigation, route }) => {
             navigation.setOptions({
               tabBarStyle: {
                 ...navigationConfig.tab.screenOptions.tabBarStyle,
-                paddingBottom: 5,
+                paddingBottom: Platform.OS === 'android' ? Math.max(insets.bottom, 5) : 5,
                 paddingTop: 5,
+                height: Platform.OS === 'android' ? 60 + Math.max(insets.bottom, 0) : 60,
               }
             });
           }
@@ -76,6 +80,7 @@ const HomeStack = ({ navigation, route }) => {
 
 // Stack navigator for Bookings tab
 const BookingsStack = ({ navigation, route }) => {
+  const insets = useSafeAreaInsets();
   // Track current tab bar state to prevent unnecessary setOptions calls
   const [currentTabBarState, setCurrentTabBarState] = React.useState(null);
   
@@ -92,10 +97,11 @@ const BookingsStack = ({ navigation, route }) => {
   const visibleTabBarStyle = React.useMemo(() => ({
     tabBarStyle: {
       ...navigationConfig.tab.screenOptions.tabBarStyle,
-      paddingBottom: 5,
+      paddingBottom: Platform.OS === 'android' ? Math.max(insets.bottom, 5) : 5,
       paddingTop: 5,
+      height: Platform.OS === 'android' ? 60 + Math.max(insets.bottom, 0) : 60,
     }
-  }), []);
+  }), [insets.bottom]);
   
   // Memoize screen listeners to prevent recreation on every render
   const screenListeners = React.useMemo(() => ({
@@ -138,6 +144,8 @@ const BookingsStack = ({ navigation, route }) => {
 
 // Main tab navigator
 const TabNavigator = () => {
+  const insets = useSafeAreaInsets();
+  
   return (
     <>
       {/* This component will listen for booking requests regardless of which screen is active */}
@@ -166,8 +174,9 @@ const TabNavigator = () => {
           tabBarInactiveTintColor: 'gray',
           tabBarStyle: {
             ...navigationConfig.tab.screenOptions.tabBarStyle,
-            paddingBottom: 5,
+            paddingBottom: Platform.OS === 'android' ? Math.max(insets.bottom, 5) : 5,
             paddingTop: 5,
+            height: Platform.OS === 'android' ? 60 + Math.max(insets.bottom, 0) : 60,
           },
         })}
       >

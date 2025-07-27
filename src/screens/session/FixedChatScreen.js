@@ -1,5 +1,4 @@
-console.log('🚀🚀🚀 [FIXED-CHAT-ASTRO] FixedChatScreen.js MODULE LOADING! 🚀🚀🚀');
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   StyleSheet,
   View,
@@ -15,1132 +14,897 @@ import {
   SafeAreaView,
   AppState,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
-import { bookingsAPI, freeChatAPI } from '../../services/api';
-import { useSocket } from '../../context/SocketContext';
 import { useAuth } from '../../context/AuthContext';
+import { useSocket } from '../../context/SocketContext';
 
-// API Configuration
-const API_BASE_URL = 'https://jyotishcallbackend-2uxrv.ondigitalocean.app';
+const API_BASE_URL = 'https://jyotishcallbackend-2uxrv.ondigitalocean.app/api/v1';
 
 /**
- * FixedChatScreen - Production-ready chat implementation for Astrologers
- * 
- * Features:
- * - Real-time messaging with socket acknowledgments
- * - API fallback for message delivery
- * - Seamless reconnection without disrupting timer/chat
- * - Reliable missed message loading
- * - Glitch-free UI during reconnections
+ * FixedChatScreen - Production-Ready Chat Implementation for Astrologer App
  */
 const FixedChatScreen = ({ route, navigation }) => {
-  console.log('🎆 [FIXED-CHAT-ASTRO] ===============================');
-  console.log('🎆 [FIXED-CHAT-ASTRO] FIXEDCHATSCREEN COMPONENT MOUNTING!');
-  console.log('🎆 [FIXED-CHAT-ASTRO] ===============================');
-  console.log('🔍 [FIXED-CHAT-ASTRO] Route object:', route);
-  console.log('🔍 [FIXED-CHAT-ASTRO] Route params:', route?.params);
-  console.log('🔍 [FIXED-CHAT-ASTRO] Navigation object:', navigation);
+  // Mounting guard to prevent duplicate initialization
+  const mountingGuardRef = useRef(false);
+  const initializationCompleteRef = useRef(false);
+  const componentIdRef = useRef(Math.random().toString(36).substr(2, 9));
   
-  // Extract route parameters
-  const {
-    bookingId,
-    sessionId,
-    astrologerId,
-    consultationType = 'chat',
-    isFreeChat = false,
-    freeChatId,
-    bookingDetails,
-    userInfo
-  } = route.params || {};
+  console.log('🚀 FixedChatScreen (Astrologer): Component mounting with ID:', componentIdRef.current);
+  console.log('🚀 FixedChatScreen (Astrologer): Mounting guard status:', mountingGuardRef.current);
+  console.log('🚀 FixedChatScreen (Astrologer): Route params:', route.params);
   
-  console.log('🔍 [FIXED-CHAT-ASTRO] Extracted parameters:');
-  console.log('🔍 [FIXED-CHAT-ASTRO] - bookingId:', bookingId);
-  console.log('🔍 [FIXED-CHAT-ASTRO] - sessionId:', sessionId);
-  console.log('🔍 [FIXED-CHAT-ASTRO] - astrologerId:', astrologerId);
-  console.log('🔍 [FIXED-CHAT-ASTRO] - consultationType:', consultationType);
-  console.log('🔍 [FIXED-CHAT-ASTRO] - isFreeChat:', isFreeChat);
-  console.log('🔍 [FIXED-CHAT-ASTRO] - freeChatId:', freeChatId);
-  console.log('🔍 [FIXED-CHAT-ASTRO] - bookingDetails:', !!bookingDetails);
-  console.log('🔍 [FIXED-CHAT-ASTRO] - userInfo:', !!userInfo);
-
-  // Auth context
-  console.log('🔐 [FIXED-CHAT-ASTRO] Getting Auth context...');
+  // Track mounting status but don't early return (violates React hooks rules)
+  const isDuplicateMount = mountingGuardRef.current;
+  if (!isDuplicateMount) {
+    mountingGuardRef.current = true;
+  } else {
+    console.log('⚠️ [MOUNT] Duplicate mount detected for component:', componentIdRef.current);
+  }
+  
+  const { socket } = useSocket();
   const { user: authUser } = useAuth();
-  console.log('🔐 [FIXED-CHAT-ASTRO] Auth user:', !!authUser, authUser?.id || authUser?._id);
+  
+  // Extract parameters
+  const { bookingId, sessionId, userId, consultationType = 'chat', bookingDetails } = route.params || {};
+  
+  // Refs for stable values
+  const socketRef = useRef(null);
+  const flatListRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
+  const reconnectTimeoutRef = useRef(null);
+  const timerIntervalRef = useRef(null);
+  const mountedRef = useRef(true);
+  const lastMessageTimestampRef = useRef(0);
+  const roomJoinedRef = useRef(false);
+  const appStateRef = useRef(AppState.currentState);
+  const messagesEndRef = useRef(null);
+  const inputRef = useRef(null);
+  const socketInitializedRef = useRef(false);
 
-  // Socket context
-  console.log('🔌 [FIXED-CHAT-ASTRO] Getting Socket context...');
-  const { socket: contextSocket, isConnected } = useSocket();
-  console.log('🔌 [FIXED-CHAT-ASTRO] Context socket available:', !!contextSocket);
-  console.log('🔌 [FIXED-CHAT-ASTRO] Socket connected:', contextSocket?.connected);
-  console.log('🔌 [FIXED-CHAT-ASTRO] Socket ID:', contextSocket?.id);
-  console.log('🔌 [FIXED-CHAT-ASTRO] isConnected flag:', isConnected);
-
-  // Core state
+  // ===== STATE MANAGEMENT =====
   const [messages, setMessages] = useState([]);
   const [inputText, setInputText] = useState('');
   const [connectionStatus, setConnectionStatus] = useState('connecting');
   const [sessionActive, setSessionActive] = useState(false);
   const [userTyping, setUserTyping] = useState(false);
   const [loading, setLoading] = useState(true);
-
-  // Timer state
+  
   const [timerData, setTimerData] = useState({
     elapsed: 0,
+    duration: 0,
     isActive: false,
-    amount: 0,
-    currency: '₹'
+    startTime: null
   });
 
-  // Session data
-  const [sessionData, setSessionData] = useState({
-    astrologer: null,
-    user: null,
-    booking: bookingDetails || null
-  });
+  // ===== MOUNTING GUARD AND INITIALIZATION =====
+  useEffect(() => {
+    console.log('🔄 [MOUNT] Component mounted with ID:', componentIdRef.current);
+    console.log('🔄 [MOUNT] Initialization complete status:', initializationCompleteRef.current);
+    
+    // Mark initialization as complete after mount
+    initializationCompleteRef.current = true;
+    
+    return () => {
+      console.log('🔄 [UNMOUNT] Component unmounting with ID:', componentIdRef.current);
+      mountingGuardRef.current = false;
+      initializationCompleteRef.current = false;
+    };
+  }, []);
 
-  // Refs
-  const socketRef = useRef(null);
-  const flatListRef = useRef(null);
-  const reconnectTimeoutRef = useRef(null);
-  const messageQueueRef = useRef([]);
-  const pendingMessagesRef = useRef(new Map());
-  const sessionActivationTimeoutRef = useRef(null);
-  const lastMessageIdRef = useRef(0);
-  const typingTimeoutRef = useRef(null);
-  const timerRef = useRef(null);
-  const appStateRef = useRef(AppState.currentState);
-  const isInitializedRef = useRef(false);
-  const roomJoinedRef = useRef(false);
+  // ===== MAIN COMPONENT INITIALIZATION =====
+  useEffect(() => {
+    // Skip initialization for duplicate mounts
+    if (isDuplicateMount) {
+      console.log('⚠️ [INIT] Skipping initialization for duplicate mount:', componentIdRef.current);
+      return;
+    }
+    
+    // Prevent duplicate initialization
+    if (socketInitializedRef.current) {
+      console.log('⚠️ [INIT] Socket already initialized, skipping duplicate initialization:', componentIdRef.current);
+      return;
+    }
+    
+    console.log('🚀 [INIT] Starting component initialization for:', componentIdRef.current);
+    console.log('🚀 [INIT] BookingId:', bookingId, 'SessionId:', sessionId);
+    console.log('🚀 [INIT] AuthUser:', authUser);
+    
+    if (!bookingId) {
+      console.error('❌ [INIT] Missing bookingId:', bookingId);
+      return;
+    }
+    
+    if (!authUser?.id) {
+      console.error('❌ [INIT] Missing authUser.id, waiting for auth to load...');
+      // Don't return here, let it retry when authUser becomes available
+      return;
+    }
+    
+    // Mark socket as being initialized
+    socketInitializedRef.current = true;
+    
+    // Initialize socket connection
+    const initTimer = setTimeout(() => {
+      console.log('🚀 [INIT] Initializing socket after delay');
+      initializeSocket();
+      
+      // Join room after socket initialization
+      setTimeout(() => {
+        console.log('🚀 [INIT] Joining consultation room');
+        joinConsultationRoom();
+      }, 1000);
+    }, 500);
+    
+    return () => {
+      clearTimeout(initTimer);
+      console.log('🚀 [CLEANUP] Component cleanup for:', componentIdRef.current);
+      
+      // Clean up socket listeners and connection
+      if (socketRef.current) {
+        console.log('🚀 [CLEANUP] Cleaning up socket listeners');
+        socketRef.current.off('receive_message');
+        socketRef.current.off('message_delivered');
+        socketRef.current.off('typing_indicator');
+        socketRef.current.off('session_started');
+        socketRef.current.off('session_timer');
+        socketRef.current.off('session_ended');
+        socketRef.current.off('connect');
+        socketRef.current.off('disconnect');
+        socketRef.current.off('connect_error');
+        
+        // Reset socket reference
+        socketRef.current = null;
+      }
+      
+      // Reset initialization flags for proper remount handling
+      socketInitializedRef.current = false;
+      roomJoinedRef.current = false;
+      
+      // Clear any active timers
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+        timerIntervalRef.current = null;
+      }
+      
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+      
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+        typingTimeoutRef.current = null;
+      }
+      
+      // Reset room joined status
+      roomJoinedRef.current = false;
+    };
+  }, [bookingId, sessionId, authUser?.id]);
 
-  // Configuration
-  const CONNECTION_CONFIG = {
-    maxReconnectAttempts: 5,
-    reconnectDelay: 1000,
-    maxReconnectDelay: 30000,
-    messageTimeout: 10000,
-    heartbeatInterval: 30000,
-    typingTimeout: 3000
-  };
-
-  // Utility functions - formatTime moved to render section
+  // ===== UTILITY FUNCTIONS =====
+  const formatTime = useCallback((seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }, []);
 
   const generateMessageId = useCallback(() => {
-    return `msg_${Date.now()}_${++lastMessageIdRef.current}`;
+    return `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }, []);
 
   const getCurrentRoomId = useCallback(() => {
-    if (isFreeChat) {
-      return `free_chat:${freeChatId || bookingId}`;
-    }
-    // Return consultation:<bookingId> format - backend broadcasts to this room
     return `consultation:${bookingId}`;
-  }, [isFreeChat, freeChatId, bookingId]);
+  }, [bookingId]);
 
-  // Socket connection management
-  const initializeSocket = useCallback(() => {
-    console.log('🔌 [FIXED-CHAT-ASTRO] Initializing socket...');
-    console.log('🔍 [FIXED-CHAT-ASTRO] Context socket:', !!contextSocket);
-    console.log('🔍 [FIXED-CHAT-ASTRO] Context socket connected:', contextSocket?.connected);
-    console.log('🔍 [FIXED-CHAT-ASTRO] Socket ref current:', !!socketRef.current);
-    console.log('🔍 [FIXED-CHAT-ASTRO] Is initialized ref:', isInitializedRef.current);
+  const safeSetState = useCallback((setter, value) => {
+    if (mountedRef.current) {
+      setter(value);
+    }
+  }, []);
+
+  // ===== TIMER MANAGEMENT =====
+  const startLocalTimer = useCallback((duration = 0) => {
+    console.log('⏱️ [TIMER] Starting local timer with duration:', duration);
     
-    if (isInitializedRef.current) {
-      console.log('⚠️ [FIXED-CHAT-ASTRO] Socket already initialized, skipping');
-      return;
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
     }
     
-    if (socketRef.current?.connected) {
-      console.log('🔌 [FIXED-CHAT-ASTRO] Socket already connected');
-      return;
-    }
-
-    // Check if socket was successfully created
-    if (!contextSocket) {
-      console.error('🚨 [FIXED-CHAT-ASTRO] No socket instance from context - will retry on next effect');
-      setConnectionStatus('error');
-      return; // Don't create recursive timeout - let useEffect handle retry
-    }
-
-    console.log('🔌 [FIXED-CHAT-ASTRO] Setting socket reference from context');
-    socketRef.current = contextSocket;
-    isInitializedRef.current = true; // Mark as initialized to prevent multiple calls
-
-    // Setup all socket event listeners first
-    setupSocketListeners();
-    
-    // Check if socket is already connected
-    if (contextSocket.connected) {
-      console.log('✅ [FIXED-CHAT-ASTRO] Socket was already connected - calling auth immediately');
-      setConnectionStatus('connecting'); // Keep connecting until session is ready
-      authenticateAndJoinRoom();
-      processMessageQueue();
-      return;
-    }
-    
-    // Connection event handlers for new connections
-    contextSocket.on('connect', () => {
-      console.log('✅ [FIXED-CHAT-ASTRO] Socket connected');
-      console.log('🔍 [FIXED-CHAT-ASTRO] Socket ID:', contextSocket?.id);
-      console.log('🔍 [FIXED-CHAT-ASTRO] Socket connected status:', contextSocket?.connected);
-      setConnectionStatus('connecting'); // Keep connecting until session is ready
-      // Call functions directly to avoid dependency issues
-      console.log('🔍 [FIXED-CHAT-ASTRO] About to call authenticateAndJoinRoom');
-      authenticateAndJoinRoom();
-      processMessageQueue();
+    const startTime = Date.now();
+    safeSetState(setTimerData, {
+      elapsed: 0,
+      duration,
+      isActive: true,
+      startTime
     });
-
-    contextSocket.on('disconnect', (reason) => {
-      console.log('❌ [FIXED-CHAT-ASTRO] Socket disconnected:', reason);
-      setConnectionStatus('disconnected');
-      roomJoinedRef.current = false;
-      isInitializedRef.current = false; // Allow re-initialization on reconnect
-    });
-
-    contextSocket.on('connect_error', (error) => {
-      console.error('🚨 [FIXED-CHAT-ASTRO] Connection error:', error);
-      setConnectionStatus('error');
-      isInitializedRef.current = false; // Allow re-initialization on error
-    });
-
-    // Try to connect if not already connected
-    if (!contextSocket.connected) {
-      console.log('🔄 [FIXED-CHAT-ASTRO] Attempting to connect socket...');
-      contextSocket.connect();
-    }
-  }, [contextSocket, setupSocketListeners, authenticateAndJoinRoom, processMessageQueue]);
-
-  // Setup socket event listeners
-  const setupSocketListeners = useCallback(() => {
-    if (!socketRef.current) {
-      console.log('⚠️ [FIXED-CHAT-ASTRO] Cannot setup listeners - no socket ref');
-      return;
-    }
-
-    console.log('🎧 [FIXED-CHAT-ASTRO] Setting up socket event listeners');
     
-    // Message handlers
-    socketRef.current.on('receive_message', handleIncomingMessage);
-    socketRef.current.on('message_delivered', handleMessageDelivered);
-    socketRef.current.on('typing_started', handleTypingStarted);
-    socketRef.current.on('typing_stopped', handleTypingStopped);
-    
-    // Session handlers
-    socketRef.current.on('session_timer_update', handleTimerUpdate);
-    socketRef.current.on('session_started', handleSessionStarted);
-    socketRef.current.on('session_ended', handleSessionEnded);
-    
-    // Booking and consultation handlers
-    socketRef.current.on('booking_status_update', handleBookingStatusUpdate);
-    socketRef.current.on('user_joined_consultation', handleUserJoinedConsultation);
-    socketRef.current.on('astrologer_joined_consultation', handleAstrologerJoinedConsultation);
-    
-    // Missed messages
-    socketRef.current.on('missed_messages', handleMissedMessages);
-    
-    console.log('✅ [FIXED-CHAT-ASTRO] All socket event listeners registered successfully');
-    console.log('👤 [FIXED-CHAT-ASTRO] Listening for user_joined_consultation events...');
-  }, [handleIncomingMessage, handleMessageDelivered, handleTypingStarted, handleTypingStopped, handleTimerUpdate, handleSessionStarted, handleSessionEnded, handleBookingStatusUpdate, handleUserJoinedConsultation, handleAstrologerJoinedConsultation, handleMissedMessages]);
-
-  // Authentication and room joining
-  const authenticateAndJoinRoom = useCallback(async () => {
-    console.log('🔍 [FIXED-CHAT-ASTRO] authenticateAndJoinRoom called');
-    console.log('🔍 [FIXED-CHAT-ASTRO] Socket connected:', socketRef.current?.connected);
-    console.log('🔍 [FIXED-CHAT-ASTRO] Room already joined:', roomJoinedRef.current);
-    
-    if (!socketRef.current?.connected || roomJoinedRef.current) {
-      console.log('⚠️ [FIXED-CHAT-ASTRO] Skipping room join - socket not connected or already joined');
-      return;
-    }
-
-    try {
-      console.log('🔍 [FIXED-CHAT-ASTRO] Getting astrologer token from storage');
-      const token = await AsyncStorage.getItem('astrologerToken');
-
-      console.log('🔍 [FIXED-CHAT-ASTRO] Token found:', !!token);
-      if (!token) {
-        throw new Error('No authentication token found');
-      }
-
-      // Authenticate socket
-      console.log('🔐 [FIXED-CHAT-ASTRO] Authenticating socket');
-      socketRef.current.emit('authenticate', { token, role: 'astrologer' });
-
-      // Join consultation room
-      const roomId = getCurrentRoomId();
-      console.log('🔍 [FIXED-CHAT-ASTRO] Room ID:', roomId);
-      console.log('🔍 [FIXED-CHAT-ASTRO] Booking ID:', bookingId);
-      console.log('🔍 [FIXED-CHAT-ASTRO] Session ID:', sessionId);
-      console.log('🔍 [FIXED-CHAT-ASTRO] Astrologer ID:', astrologerId);
+    timerIntervalRef.current = setInterval(() => {
+      if (!mountedRef.current) return;
       
-      const joinData = {
-        roomId,
-        bookingId,
-        sessionId,
-        astrologerId,
-        consultationType,
-        isFreeChat,
-        timestamp: new Date().toISOString()
-      };
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      safeSetState(setTimerData, prev => ({
+        ...prev,
+        elapsed
+      }));
+    }, 1000);
+  }, [safeSetState]);
 
-      console.log('🏠 [FIXED-CHAT-ASTRO] Joining room:', joinData);
-
-      socketRef.current.emit('join_consultation_room', joinData, (response) => {
-        if (response?.success) {
-          console.log('✅ [FIXED-CHAT-ASTRO] Successfully joined room');
-          roomJoinedRef.current = true;
-          
-          // Emit astrologer_joined_consultation to notify backend
-          socketRef.current.emit('astrologer_joined_consultation', {
-            bookingId,
-            roomId: getCurrentRoomId(),
-            astrologerId,
-            consultationType,
-            sessionId
-          });
-          
-          // Request missed messages
-          requestMissedMessages();
-          
-          // Don't set connected until session is properly activated by backend
-          setConnectionStatus('connecting');
-          
-          // Set timeout fallback in case backend doesn't emit session_started
-          if (sessionActivationTimeoutRef.current) {
-            clearTimeout(sessionActivationTimeoutRef.current);
-          }
-          
-          sessionActivationTimeoutRef.current = setTimeout(() => {
-            console.log('⚠️ [FIXED-CHAT-ASTRO] Session activation timeout - activating as fallback');
-            if (!sessionActive) {
-              setConnectionStatus('connected');
-              setSessionActive(true);
-            }
-          }, 10000); // 10 second timeout
-          
-          // Start session if not already active
-          if (!sessionActive && response.sessionData) {
-            setSessionActive(true);
-            setSessionData(response.sessionData);
-          }
-        } else {
-          console.error('❌ [FIXED-CHAT-ASTRO] Failed to join room:', response?.error);
-          setConnectionStatus('error');
-        }
-      });
-
-    } catch (error) {
-      console.error('🚨 [FIXED-CHAT-ASTRO] Authentication error:', error);
-      setConnectionStatus('error');
+  const stopLocalTimer = useCallback(() => {
+    console.log('⏱️ [TIMER] Stopping local timer');
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
     }
-  }, [sessionActive, bookingId, sessionId, astrologerId, consultationType, isFreeChat, getCurrentRoomId]);
+    safeSetState(setTimerData, prev => ({ ...prev, isActive: false }));
+  }, [safeSetState]);
 
-  // Message handling
-  const handleIncomingMessage = useCallback((data) => {
-    console.log('📨 [FIXED-CHAT-ASTRO] Incoming message:', data);
-
-    // Validate message
-    if (!data.id || !data.content || !data.sender) {
-      console.warn('⚠️ [FIXED-CHAT-ASTRO] Invalid message received:', data);
+  // ===== MESSAGE HANDLING =====
+  const handleIncomingMessage = useCallback((messageData) => {
+    console.log('📨 [MESSAGE] Received:', messageData);
+    console.log('📨 [MESSAGE] Raw messageData keys:', Object.keys(messageData || {}));
+    console.log('📨 [MESSAGE] messageData.content:', messageData?.content);
+    console.log('📨 [MESSAGE] messageData.senderType:', messageData?.senderType);
+    console.log('📨 [MESSAGE] messageData.senderId:', messageData?.senderId);
+    
+    if (!messageData || !messageData.content) {
+      console.warn('⚠️ [MESSAGE] Invalid message data received - messageData:', messageData);
       return;
     }
-
-    // Add message to state with deduplication using functional update
-    const normalizedMessage = {
-      id: data.id,
-      content: data.content,
-      sender: data.sender,
-      senderRole: data.senderRole || 'user',
-      timestamp: data.timestamp || new Date().toISOString(),
-      status: 'received'
+    
+    const messageTime = new Date(messageData.timestamp || Date.now()).getTime();
+    if (messageTime <= lastMessageTimestampRef.current) {
+      console.log('🔄 [MESSAGE] Duplicate message ignored - messageTime:', messageTime, 'lastTime:', lastMessageTimestampRef.current);
+      return;
+    }
+    lastMessageTimestampRef.current = messageTime;
+    
+    const newMessage = {
+      id: messageData.id || generateMessageId(),
+      content: messageData.content,
+      senderId: messageData.senderId,
+      senderType: messageData.senderType || 'user',
+      timestamp: messageData.timestamp || new Date().toISOString(),
+      status: 'delivered'
     };
-
-    setMessages(prev => {
-      // Check for duplicates in the functional update
-      const isDuplicate = prev.some(msg => msg.id === data.id);
-      if (isDuplicate) {
-        console.log('🔄 [FIXED-CHAT-ASTRO] Duplicate message ignored:', data.id);
-        return prev; // Return unchanged state
-      }
-      
-      console.log('✅ [FIXED-CHAT-ASTRO] Adding new message:', data.id);
-      return [...prev, normalizedMessage];
+    
+    console.log('📨 [MESSAGE] Created newMessage object:', newMessage);
+    console.log('📨 [MESSAGE] newMessage.senderType:', newMessage.senderType);
+    console.log('📨 [MESSAGE] Will be displayed as:', newMessage.senderType === 'astrologer' ? 'OWN MESSAGE' : 'OTHER MESSAGE');
+    
+    safeSetState(setMessages, prev => {
+      const updatedMessages = [...prev, newMessage];
+      console.log('📨 [MESSAGE] Total messages after adding:', updatedMessages.length);
+      console.log('📨 [MESSAGE] Last 3 messages:', updatedMessages.slice(-3).map(m => ({
+        content: m.content,
+        senderType: m.senderType,
+        isOwn: m.senderType === 'astrologer'
+      })));
+      return updatedMessages;
     });
-
-    // Send acknowledgment
-    if (socketRef.current?.connected) {
-      socketRef.current.emit('message_acknowledged', {
-        messageId: data.id,
-        roomId: getCurrentRoomId()
-      });
-    }
-
-    // Scroll to bottom
+    
     setTimeout(() => {
       flatListRef.current?.scrollToEnd({ animated: true });
     }, 100);
-
-  }, [getCurrentRoomId]);
-
+  }, [generateMessageId, safeSetState]);
+  
   const handleMessageDelivered = useCallback((data) => {
-    console.log('✅ [FIXED-CHAT-ASTRO] Message delivered:', data.messageId);
+    console.log('✅ [MESSAGE] Delivered:', data);
     
-    // Update message status
-    setMessages(prev => 
+    safeSetState(setMessages, prev => 
       prev.map(msg => 
         msg.id === data.messageId 
           ? { ...msg, status: 'delivered' }
           : msg
       )
     );
-
-    // Remove from pending messages
-    pendingMessagesRef.current.delete(data.messageId);
-  }, []);
-
-  const handleMissedMessages = useCallback((data) => {
-    console.log('📥 [FIXED-CHAT-ASTRO] Received missed messages:', data.messages?.length || 0);
-    
-    if (data.messages && Array.isArray(data.messages)) {
-      const validMessages = data.messages
-        .filter(msg => msg.id && msg.content && msg.sender)
-        .map(msg => ({
-          id: msg.id,
-          content: msg.content,
-          sender: msg.sender,
-          senderRole: msg.senderRole || (msg.sender === astrologerId ? 'astrologer' : 'user'),
-          timestamp: msg.timestamp || new Date().toISOString(),
-          status: 'received'
-        }));
-
-      if (validMessages.length > 0) {
-        setMessages(prev => {
-          // Merge and deduplicate messages
-          const existingIds = new Set(prev.map(m => m.id));
-          const newMessages = validMessages.filter(m => !existingIds.has(m.id));
-          
-          // Sort by timestamp
-          const allMessages = [...prev, ...newMessages].sort(
-            (a, b) => new Date(a.timestamp) - new Date(b.timestamp)
-          );
-          
-          return allMessages;
-        });
+  }, [safeSetState]);
+  
+  const handleTypingIndicator = useCallback((data) => {
+    if (data.userId !== authUser?.id) {
+      safeSetState(setUserTyping, data.isTyping);
+      
+      if (data.isTyping) {
+        if (typingTimeoutRef.current) {
+          clearTimeout(typingTimeoutRef.current);
+        }
+        typingTimeoutRef.current = setTimeout(() => {
+          safeSetState(setUserTyping, false);
+        }, 3000);
       }
     }
-  }, [astrologerId]);
-
-  // Send message using simple socket emit like EnhancedChatScreen
-  const sendMessage = useCallback(async () => {
-    const content = inputText.trim();
-    if (!content || !socketRef.current || !socketRef.current.connected || !sessionActive) {
-      console.log('🔍 [FIXED-CHAT-ASTRO] Cannot send message - missing requirements:', {
-        hasContent: !!content,
-        hasSocket: !!socketRef.current,
-        socketConnected: socketRef.current?.connected,
-        sessionActive: sessionActive,
-        roomJoined: roomJoinedRef.current
-      });
+  }, [authUser?.id, safeSetState]);
+  
+  // ===== SESSION EVENT HANDLERS =====
+  const handleSessionStarted = useCallback((data) => {
+    console.log('🚀 [SESSION] Session started event received:', data);
+    console.log('🚀 [SESSION] Current bookingId:', bookingId);
+    console.log('🚀 [SESSION] Event bookingId:', data.bookingId);
+    console.log('🚀 [SESSION] Setting session active and connected status');
+    
+    safeSetState(setSessionActive, true);
+    safeSetState(setConnectionStatus, 'connected');
+    
+    if (data.duration) {
+      console.log('🚀 [SESSION] Starting timer with duration:', data.duration);
+      startLocalTimer(data.duration);
+    } else {
+      console.log('🚀 [SESSION] No duration provided, starting timer with 0');
+      startLocalTimer(0);
+    }
+  }, [safeSetState, startLocalTimer, bookingId]);
+  
+  const handleTimerUpdate = useCallback((data) => {
+    console.log('⏱️ [TIMER] Update received:', data);
+    
+    if (data.bookingId !== bookingId) {
+      console.log('⚠️ [TIMER] Ignoring timer for different booking');
       return;
     }
+    
+    safeSetState(setConnectionStatus, 'connected');
+    
+    if (data.elapsed !== undefined) {
+      const backendElapsed = parseInt(data.elapsed, 10);
+      const timeDiff = Math.abs(timerData.elapsed - backendElapsed);
+      
+      if (timeDiff > 5) {
+        console.log('⏱️ [TIMER] Syncing with backend timer:', backendElapsed);
+        safeSetState(setTimerData, prev => ({
+          ...prev,
+          elapsed: backendElapsed,
+          isActive: true
+        }));
+      }
+    }
+  }, [bookingId, safeSetState, timerData.elapsed]);
+  
+  const handleSessionEnded = useCallback((data) => {
+    console.log('🛑 [SESSION] Session ended:', data);
+    safeSetState(setSessionActive, false);
+    stopLocalTimer();
+    
+    Alert.alert(
+      'Session Ended',
+      'Your consultation session has ended.',
+      [{ text: 'OK', onPress: () => navigation.goBack() }]
+    );
+  }, [safeSetState, stopLocalTimer, navigation]);
 
-    console.log('📤 [FIXED-CHAT-ASTRO] Sending message:', content);
-
-    // Get astrologer data for sender info
-    const astrologerData = await AsyncStorage.getItem('astrologerData');
-    const parsedData = astrologerData ? JSON.parse(astrologerData) : null;
-    const currentAstrologerId = parsedData?.id || astrologerId;
-
-    // Create message object matching backend expectations
-    const messageData = {
-      id: generateMessageId(),
-      content,
-      text: content, // Backward compatibility
-      message: content, // Backward compatibility
-      sender: currentAstrologerId,
-      senderRole: 'astrologer',
-      senderId: currentAstrologerId,
-      senderName: parsedData?.displayName || parsedData?.name || 'Astrologer',
-      timestamp: new Date().toISOString(),
-      roomId: bookingId, // Backend expects raw bookingId for message processing
+  // ===== SOCKET MANAGEMENT =====
+  const setupSocketListeners = useCallback(() => {
+    const socket = socketRef.current;
+    if (!socket) return;
+    
+    console.log('👂 [SOCKET] Setting up event listeners');
+    
+    socket.on('connect', () => {
+      console.log('✅ [SOCKET] Connected successfully');
+      console.log('🔥 [SOCKET] Socket ID:', socket.id);
+      safeSetState(setConnectionStatus, 'connecting');
+      joinConsultationRoom();
+    });
+    
+    socket.on('disconnect', (reason) => {
+      console.log('❌ [SOCKET] Disconnected:', reason);
+      safeSetState(setConnectionStatus, 'connecting');
+      if (reason === 'io server disconnect') {
+        socket.connect();
+      }
+    });
+    
+    socket.on('connect_error', (error) => {
+      console.error('❌ [SOCKET] Connection error:', error);
+      safeSetState(setConnectionStatus, 'error');
+    });
+    
+    // Add debug wrapper to ensure event listener is working
+    socket.on('receive_message', (data) => {
+      console.log('🔥 [SOCKET] receive_message event fired! Data:', data);
+      handleIncomingMessage(data);
+    });
+    socket.on('message_delivered', handleMessageDelivered);
+    socket.on('typing_indicator', handleTypingIndicator);
+    
+    console.log('🎯 [SOCKET] Registering session_started event listener');
+    socket.on('session_started', handleSessionStarted);
+    
+    socket.on('session_timer', handleTimerUpdate);
+    socket.on('session_ended', handleSessionEnded);
+    
+    console.log('🎯 [SOCKET] All event listeners registered successfully');
+    console.log('🔥 [SOCKET] receive_message listener registered for socket:', socket.id);
+    console.log('🔥 [SOCKET] Current room should be: consultation:' + bookingId);
+    
+  }, [bookingId]); // Only stable dependencies to prevent remounting
+  
+  const joinConsultationRoom = useCallback(() => {
+    // Try to get socket reference, fallback to context socket if needed
+    let currentSocket = socketRef.current;
+    if (!currentSocket && socket) {
+      console.log('🔄 [ROOM] Socket ref lost, using context socket');
+      socketRef.current = socket;
+      currentSocket = socket;
+    }
+    
+    if (!currentSocket) {
+      console.log('⚠️ [ROOM] No socket available - cannot join room');
+      console.log('⚠️ [ROOM] socketRef.current:', !!socketRef.current);
+      console.log('⚠️ [ROOM] context socket:', !!socket);
+      return;
+    }
+    
+    if (roomJoinedRef.current) {
+      console.log('⚠️ [ROOM] Already joined room, skipping');
+      return;
+    }
+    
+    const roomId = getCurrentRoomId();
+    console.log('🏠 [ROOM] Joining consultation room:', roomId);
+    console.log('🏠 [ROOM] BookingId:', bookingId);
+    console.log('🏠 [ROOM] SessionId:', sessionId);
+    console.log('🏠 [ROOM] AstrologerId:', authUser?.id);
+    
+    console.log('📤 [EMIT] Emitting join_consultation_room event...');
+    currentSocket.emit('join_consultation_room', {
       bookingId,
       sessionId,
+      userId: authUser?.id,
+      userType: 'astrologer',
+      roomId
+    });
+    console.log('✅ [EMIT] join_consultation_room event emitted successfully');
+    
+    console.log('📤 [EMIT] Emitting astrologer_joined_consultation event...');
+    currentSocket.emit('astrologer_joined_consultation', {
+      bookingId,
+      sessionId,
+      astrologerId: authUser?.id
+    });
+    console.log('✅ [EMIT] astrologer_joined_consultation event emitted successfully');
+    
+    roomJoinedRef.current = true;
+    console.log('🏠 [ROOM] Room join process completed');
+  }, [bookingId, sessionId, authUser?.id]);
+
+  const initializeSocket = useCallback(() => {
+    console.log('🔌 [SOCKET] Initializing socket connection for component:', componentIdRef.current);
+    console.log('🔌 [SOCKET] Current socketRef.current:', !!socketRef.current);
+    console.log('🔌 [SOCKET] Socket from context:', !!socket);
+    
+    try {
+      if (!socket) {
+        throw new Error('Socket not available from context');
+      }
+      
+      // Always update socket reference to handle remounts
+      socketRef.current = socket;
+      console.log('🔌 [SOCKET] Socket reference updated');
+      
+      if (!socket.connected) {
+        console.log('🔌 [SOCKET] Connecting socket...');
+        socket.connect();
+      }
+      
+      setupSocketListeners();
+      safeSetState(setConnectionStatus, 'connecting');
+      
+      // Always attempt to join room after socket setup
+      setTimeout(() => {
+        if (mountedRef.current && socketRef.current) {
+          console.log('🏠 [SOCKET] Auto-joining room after socket initialization');
+          joinConsultationRoom();
+        }
+      }, 100);
+      
+    } catch (error) {
+      console.error('❌ [SOCKET] Initialization failed:', error);
+      safeSetState(setConnectionStatus, 'error');
+      
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      
+      reconnectTimeoutRef.current = setTimeout(() => {
+        if (mountedRef.current) {
+          console.log('🔄 [SOCKET] Attempting reconnection...');
+          initializeSocket();
+        }
+      }, 3000);
+    }
+  }, []);
+
+  // ===== MESSAGE SENDING =====
+  const sendMessage = useCallback(async () => {
+    if (!inputText.trim() || !sessionActive) {
+      console.log('⚠️ [MESSAGE] Cannot send - empty text or session inactive');
+      return;
+    }
+    
+    const messageContent = inputText.trim();
+    const messageId = generateMessageId();
+    
+    const optimisticMessage = {
+      id: messageId,
+      content: messageContent,
+      senderId: authUser?.id,
+      senderType: 'astrologer',
+      timestamp: new Date().toISOString(),
       status: 'sending'
     };
-
-    console.log('📤 [FIXED-CHAT-ASTRO] Message data:', {
-      id: messageData.id,
-      content: messageData.content,
-      roomId: messageData.roomId,
-      bookingId: messageData.bookingId,
-      sessionId: messageData.sessionId,
-      sender: messageData.sender
-    });
-
-    // Add message to UI immediately (optimistic update)
-    setMessages(prev => [...prev, messageData]);
-    setInputText('');
-
+    
+    safeSetState(setMessages, prev => [...prev, optimisticMessage]);
+    safeSetState(setInputText, '');
+    
+    setTimeout(() => {
+      flatListRef.current?.scrollToEnd({ animated: true });
+    }, 100);
+    
     try {
-      // Send message via socket using simple emit like EnhancedChatScreen
-      socketRef.current.emit('send_message', messageData);
-      console.log('✅ [FIXED-CHAT-ASTRO] Message sent via socket:', messageData.id);
-      
-      // Update message status to sent
-      setMessages(prev => 
-        prev.map(msg => 
-          msg.id === messageData.id 
-            ? { ...msg, status: 'sent' }
-            : msg
-        )
-      );
+      const socket = socketRef.current;
+      if (socket?.connected) {
+        console.log('📤 [MESSAGE] Sending via socket:', messageContent);
+        
+        const messagePayload = {
+          id: messageId,
+          content: messageContent,
+          text: messageContent,
+          message: messageContent,
+          senderId: authUser?.id,
+          senderType: 'astrologer',
+          bookingId,
+          sessionId,
+          roomId: getCurrentRoomId(),
+          timestamp: new Date().toISOString()
+        };
+        
+        socket.emit('send_message', messagePayload, (acknowledgment) => {
+          if (acknowledgment?.success) {
+            console.log('✅ [MESSAGE] Socket send acknowledged');
+            safeSetState(setMessages, prev => 
+              prev.map(msg => 
+                msg.id === messageId 
+                  ? { ...msg, status: 'sent' }
+                  : msg
+              )
+            );
+          } else {
+            console.warn('⚠️ [MESSAGE] Socket send not acknowledged');
+            safeSetState(setMessages, prev => 
+              prev.map(msg => 
+                msg.id === messageId 
+                  ? { ...msg, status: 'failed' }
+                  : msg
+              )
+            );
+          }
+        });
+        
+      } else {
+        console.log('🔄 [MESSAGE] Socket not connected');
+        safeSetState(setMessages, prev => 
+          prev.map(msg => 
+            msg.id === messageId 
+              ? { ...msg, status: 'failed' }
+              : msg
+          )
+        );
+      }
     } catch (error) {
-      console.error('❌ [FIXED-CHAT-ASTRO] Error sending message:', error);
-      // Update message status to failed
-      setMessages(prev => 
+      console.error('❌ [MESSAGE] Send failed:', error);
+      safeSetState(setMessages, prev => 
         prev.map(msg => 
-          msg.id === messageData.id 
+          msg.id === messageId 
             ? { ...msg, status: 'failed' }
             : msg
         )
       );
     }
-
-    // Scroll to bottom
-    setTimeout(() => {
-      flatListRef.current?.scrollToEnd({ animated: true });
-    }, 100);
-  }, [inputText, astrologerId, bookingId, sessionId, sessionActive, generateMessageId]);
-
-  // API fallback for message sending
-  const sendMessageViaAPI = useCallback(async (message) => {
-    try {
-      console.log('📡 [FIXED-CHAT-ASTRO] Sending via API fallback:', message.id);
-      console.log('📡 [FIXED-CHAT-ASTRO] API fallback not implemented yet - marking as sent');
-      
-      // TODO: Implement proper API fallback when backend endpoints are available
-      // For now, just mark as sent to prevent errors
-      console.log('✅ [FIXED-CHAT-ASTRO] Message marked as sent (API fallback placeholder):', message.id);
-      updateMessageStatus(message.id, 'sent');
-      pendingMessagesRef.current.delete(message.id);
-
-    } catch (error) {
-      console.error('🚨 [FIXED-CHAT-ASTRO] API fallback failed:', error);
-      updateMessageStatus(message.id, 'failed');
-    }
-  }, []);
-
-  const updateMessageStatus = useCallback((messageId, status) => {
-    setMessages(prev => 
-      prev.map(msg => 
-        msg.id === messageId 
-          ? { ...msg, status }
-          : msg
-      )
-    );
-  }, []);
-
-  // Typing indicators
-  const handleTypingStarted = useCallback((data) => {
-    if (data.sender !== authUser?.id) {
-      setUserTyping(true);
-      
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-      
-      typingTimeoutRef.current = setTimeout(() => {
-        setUserTyping(false);
-      }, CONNECTION_CONFIG.typingTimeout);
-    }
-  }, [authUser?.id]);
-
-  const handleTypingStopped = useCallback((data) => {
-    if (data.sender !== authUser?.id) {
-      setUserTyping(false);
-      
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-        typingTimeoutRef.current = null;
-      }
-    }
-  }, [authUser?.id]);
-
+  }, [inputText, sessionActive, authUser?.id, bookingId, sessionId]);
+  
   const handleInputChange = useCallback((text) => {
-    setInputText(text);
+    safeSetState(setInputText, text);
     
-    // Only send typing events if session is active and socket is connected
-    if (!sessionActive || !socketRef.current?.connected || !roomJoinedRef.current) {
-      return;
-    }
-
-    console.log('⌨️ [FIXED-CHAT-ASTRO] Sending typing_started event');
-    
-    // Send typing started event with raw bookingId to avoid ObjectId cast error
-    socketRef.current.emit('typing_started', {
-      roomId: getCurrentRoomId(), // This is consultation:<bookingId> for room joining
-      bookingId, // Send raw bookingId for backend database queries
-      sessionId,
-      astrologerId,
-      sender: authUser?.id || astrologerId,
-      senderRole: 'astrologer',
-      timestamp: new Date().toISOString()
-    });
-    
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-    }
-    
-    typingTimeoutRef.current = setTimeout(() => {
-      if (socketRef.current?.connected && roomJoinedRef.current) {
-        console.log('⌨️ [FIXED-CHAT-ASTRO] Sending typing_stopped event');
-        socketRef.current.emit('typing_stopped', {
-          roomId: getCurrentRoomId(), // This is consultation:<bookingId> for room joining
-          bookingId, // Send raw bookingId for backend database queries
-          sessionId,
-          astrologerId,
-          sender: authUser?.id || astrologerId,
-          senderRole: 'astrologer',
-          timestamp: new Date().toISOString()
-        });
-      }
-    }, CONNECTION_CONFIG.typingTimeout);
-  }, [sessionActive, authUser?.id, astrologerId, bookingId, sessionId, getCurrentRoomId]);
-
-  // Timer management
-  const handleTimerUpdate = useCallback((data) => {
-    console.log('⏰ [FIXED-CHAT-ASTRO] Timer update:', data);
-    
-    if (data.bookingId === bookingId || data.sessionId === sessionId) {
-      // CRITICAL FIX: Backend sends 'duration', not 'elapsedSeconds' or 'elapsed'
-      const elapsedTime = data.duration || data.elapsedSeconds || data.elapsed || 0;
-      console.log('⏰ [FIXED-CHAT-ASTRO] Setting timer elapsed time to:', elapsedTime);
-      
-      // Update connection status to connected when receiving timer updates (only if not already connected)
-      if (connectionStatus !== 'connected') {
-        console.log('✅ [FIXED-CHAT-ASTRO] Receiving timer updates - setting connection status to connected');
-        setConnectionStatus('connected');
-      }
-      if (!sessionActive) {
-        setSessionActive(true);
-      }
-      
-      setTimerData({
-        elapsed: elapsedTime,
-        isActive: data.isActive !== false,
-        amount: data.currentAmount || data.amount || 0,
-        currency: data.currency || '₹'
-      });
-    } else {
-      console.log('⏰ [FIXED-CHAT-ASTRO] Timer update ignored - ID mismatch:', {
-        dataBookingId: data.bookingId,
-        dataSessionId: data.sessionId,
-        localBookingId: bookingId,
-        localSessionId: sessionId
-      });
-    }
-  }, [bookingId, sessionId]);
-
-  const handleSessionStarted = useCallback((data) => {
-    console.log('🚀 [FIXED-CHAT-ASTRO] Session started:', data);
-    console.log('🚀 [FIXED-CHAT-ASTRO] Backend confirms both parties joined - activating session');
-    
-    // Clear the session activation timeout since backend responded
-    if (sessionActivationTimeoutRef.current) {
-      clearTimeout(sessionActivationTimeoutRef.current);
-      sessionActivationTimeoutRef.current = null;
-    }
-    
-    // Only now set the session as active and connected
-    setConnectionStatus('connected');
-    setSessionActive(true);
-    
-    if (data.sessionData) {
-      setSessionData(data.sessionData);
-    }
-    
-    // Request timer sync from backend
-    if (socketRef.current?.connected) {
-      socketRef.current.emit('request_timer_sync', {
+    const socket = socketRef.current;
+    if (socket?.connected && sessionActive) {
+      socket.emit('typing_indicator', {
         bookingId,
-        sessionId
+        sessionId,
+        userId: authUser?.id,
+        isTyping: text.length > 0,
+        roomId: getCurrentRoomId()
       });
     }
-  }, [bookingId, sessionId]);
-
-  const handleSessionEnded = useCallback((data) => {
-    console.log('🏁 [FIXED-CHAT-ASTRO] Session ended:', data);
-    setSessionActive(false);
-    
-    if (timerRef.current) {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
-    }
-    
+  }, [sessionActive, bookingId, sessionId, authUser?.id]);
+  
+  const endSession = useCallback(async () => {
     Alert.alert(
-      'Session Ended',
-      data.reason || 'The consultation session has ended.',
-      [{ text: 'OK', onPress: () => navigation.goBack() }]
-    );
-  }, [navigation]);
-
-  // Handle booking status updates
-  const handleBookingStatusUpdate = useCallback((data) => {
-    console.log('📋 [FIXED-CHAT-ASTRO] Booking status update:', data);
-    
-    if (data.status === 'accepted' && data.bookingId === bookingId) {
-      console.log('✅ [FIXED-CHAT-ASTRO] Booking accepted - waiting for session_started event');
-      // Don't immediately activate - wait for proper session_started event
-      
-      if (data.sessionId) {
-        setSessionData({ sessionId: data.sessionId, roomId: data.roomId });
-      }
-    }
-  }, [bookingId]);
-
-  // Handle user joined consultation
-  const handleUserJoinedConsultation = useCallback((data) => {
-    console.log('👤 [FIXED-CHAT-ASTRO] User joined consultation event received!');
-    console.log('👤 [FIXED-CHAT-ASTRO] Event data:', JSON.stringify(data, null, 2));
-    console.log('👤 [FIXED-CHAT-ASTRO] Expected bookingId:', bookingId);
-    console.log('👤 [FIXED-CHAT-ASTRO] Received bookingId:', data?.bookingId);
-    
-    if (data.bookingId === bookingId) {
-      console.log('✅ [FIXED-CHAT-ASTRO] User joined - waiting for backend session activation');
-      // Don't activate session yet - wait for session_started event from backend
-    } else {
-      console.log('⚠️ [FIXED-CHAT-ASTRO] BookingId mismatch, ignoring event');
-    }
-  }, [bookingId]);
-
-  // Handle astrologer joined consultation
-  const handleAstrologerJoinedConsultation = useCallback((data) => {
-    console.log('🔮 [FIXED-CHAT-ASTRO] Astrologer joined consultation:', data);
-    
-    if (data.bookingId === bookingId) {
-      console.log('✅ [FIXED-CHAT-ASTRO] Astrologer joined - waiting for backend session activation');
-      // Don't activate session yet - wait for session_started event from backend
-      
-      // Start requesting timer updates
-      if (contextSocket?.connected) {
-        console.log('⏰ [FIXED-CHAT-ASTRO] Requesting timer updates');
-      }
-    }
-  }, [bookingId, contextSocket]);
-
-  // End session handler
-  const handleEndSession = useCallback(async () => {
-    try {
-      console.log('🛑 [FIXED-CHAT-ASTRO] Ending session:', { bookingId, sessionId });
-      
-      // Show confirmation dialog
-      Alert.alert(
-        'End Session',
-        'Are you sure you want to end this consultation session?',
-        [
-          {
-            text: 'Cancel',
-            style: 'cancel'
-          },
-          {
-            text: 'End Session',
-            style: 'destructive',
-            onPress: async () => {
-              try {
-                // Call backend API to end session
-                const token = await AsyncStorage.getItem('astrologerToken');
-                const response = await fetch(`${API_BASE_URL}/api/v1/sessions/end`, {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
-                  },
-                  body: JSON.stringify({
-                    sessionId: sessionId || bookingId,
-                    bookingId: bookingId,
-                    endedBy: 'astrologer'
-                  })
+      'End Session',
+      'Are you sure you want to end this consultation session?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'End Session',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              console.log('🛑 [SESSION] Ending session...');
+              
+              const socket = socketRef.current;
+              if (socket?.connected) {
+                socket.emit('end_session', {
+                  bookingId,
+                  sessionId,
+                  userId: authUser?.id,
+                  endedBy: 'user'
                 });
-                
-                const result = await response.json();
-                console.log('🛑 [FIXED-CHAT-ASTRO] End session response:', result);
-                
-                if (result.success) {
-                  // Emit socket event for real-time notification
-                  if (contextSocket?.connected) {
-                    contextSocket.emit('end_session', {
-                      sessionId: sessionId || bookingId,
-                      bookingId: bookingId,
-                      endedBy: 'astrologer'
-                    });
-                  }
-                  
-                  // Navigate back
-                  navigation.goBack();
-                } else {
-                  Alert.alert('Error', result.message || 'Failed to end session');
-                }
-              } catch (error) {
-                console.error('🛑 [FIXED-CHAT-ASTRO] Error ending session:', error);
-                Alert.alert('Error', 'Failed to end session. Please try again.');
               }
+              
+              safeSetState(setSessionActive, false);
+              stopLocalTimer();
+              navigation.goBack();
+              
+            } catch (error) {
+              console.error('❌ [SESSION] End session failed:', error);
+              Alert.alert('Error', 'Failed to end session. Please try again.');
             }
           }
-        ]
-      );
-    } catch (error) {
-      console.error('🛑 [FIXED-CHAT-ASTRO] Error in handleEndSession:', error);
-    }
-  }, [bookingId, sessionId, navigation, contextSocket]);
-
-  // Reconnection logic
-  const scheduleReconnect = useCallback(() => {
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-    }
-
-    const delay = Math.min(
-      CONNECTION_CONFIG.reconnectDelay * Math.pow(2, (socketRef.current?.reconnectAttempts || 0)),
-      CONNECTION_CONFIG.maxReconnectDelay
+        }
+      ]
     );
+  }, [bookingId, sessionId, authUser?.id]);
 
-    console.log(`🔄 [FIXED-CHAT-ASTRO] Scheduling reconnect in ${delay}ms`);
+  // ===== LIFECYCLE =====
+  useEffect(() => {
+    console.log('🔄 [LIFECYCLE] Component mounted');
+    mountedRef.current = true;
     
-    reconnectTimeoutRef.current = setTimeout(() => {
-      if (!socketRef.current?.connected) {
-        console.log('🔄 [FIXED-CHAT-ASTRO] Attempting reconnection');
-        initializeSocket();
+    // Reset room joined status on mount to handle remounts
+    roomJoinedRef.current = false;
+    console.log('🔄 [LIFECYCLE] Reset room joined status for remount');
+    
+    // Remove duplicate socket initialization - handled by main init useEffect
+    
+    // Fallback room join after a delay to ensure socket is ready
+    const fallbackJoinTimer = setTimeout(() => {
+      if (mountedRef.current && !roomJoinedRef.current) {
+        console.log('🔄 [LIFECYCLE] Fallback room join attempt');
+        joinConsultationRoom();
       }
-    }, delay);
-  }, [initializeSocket]);
-
-  // Message queue processing
-  const processMessageQueue = useCallback(() => {
-    if (messageQueueRef.current.length === 0) return;
-
-    console.log(`📤 [FIXED-CHAT-ASTRO] Processing ${messageQueueRef.current.length} queued messages`);
+    }, 1000);
     
-    const queue = [...messageQueueRef.current];
-    messageQueueRef.current = [];
-    
-    queue.forEach(message => {
-      if (socketRef.current?.connected && roomJoinedRef.current) {
-        socketRef.current.emit('send_message', message);
-      } else {
-        sendMessageViaAPI(message);
-      }
-    });
-  }, [sendMessageViaAPI]);
-
-  // Request missed messages
-  const requestMissedMessages = useCallback(() => {
-    if (!socketRef.current?.connected || !roomJoinedRef.current) return;
-
-    console.log('📥 [FIXED-CHAT-ASTRO] Requesting missed messages');
-    
-    socketRef.current.emit('get_missed_messages', {
-      roomId: getCurrentRoomId(),
-      bookingId,
-      sessionId,
-      lastMessageTimestamp: messages.length > 0 
-        ? messages[messages.length - 1].timestamp 
-        : null
-    });
-  }, [getCurrentRoomId, bookingId, sessionId, messages]);
-
-  // App state handling
-  const handleAppStateChange = useCallback((nextAppState) => {
-    console.log('📱 [FIXED-CHAT-ASTRO] App state changed:', appStateRef.current, '->', nextAppState);
-    
-    if (appStateRef.current === 'background' && nextAppState === 'active') {
-      if (!socketRef.current?.connected) {
-        initializeSocket();
-      } else if (roomJoinedRef.current) {
-        requestMissedMessages();
-      }
-    }
-    
-    appStateRef.current = nextAppState;
-  }, [initializeSocket, requestMissedMessages]);
-
-  // Main initialization effect - STABLE DEPENDENCIES ONLY
-  useEffect(() => {
-    console.log('🚀 [FIXED-CHAT-ASTRO] FixedChatScreen mounting with params:', {
-      bookingId,
-      sessionId,
-      astrologerId,
-      consultationType,
-      isFreeChat
-    });
-    
-    // Set initial connection status based on params
-    if (bookingId && sessionId) {
-      console.log('✅ [FIXED-CHAT-ASTRO] Setting initial connection status to connected');
-      setConnectionStatus('connected');
-      setSessionActive(true);
-    }
-    
-    setTimeout(() => setLoading(false), 500);
-    
-    return () => {
-      console.log('🧹 [FIXED-CHAT-ASTRO] Cleaning up main useEffect');
-    };
-  }, [bookingId, sessionId, astrologerId, consultationType, isFreeChat]); // Only stable primitive values
-  
-  // Separate effect for socket initialization to prevent dependency issues
-  useEffect(() => {
-    if (contextSocket && !isInitializedRef.current) {
-      console.log('✅ [FIXED-CHAT-ASTRO] Context socket available, initializing');
-      initializeSocket();
-    }
-  }, [contextSocket]); // Only depend on contextSocket
-  
-  // Separate effect for app state handling
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', handleAppStateChange);
-    return () => {
-      subscription?.remove();
-    };
-  }, []); // Empty dependency array for app state listener
-
-  // Setup socket listeners after handlers are defined
-  useEffect(() => {
-    if (socketRef.current && isInitializedRef.current) {
-      setupSocketListeners();
-    }
-  }, [setupSocketListeners]);
-
-  // Cleanup
-  useEffect(() => {
-    return () => {
-      console.log('🧹 [FIXED-CHAT-ASTRO] Cleaning up');
+    const handleAppStateChange = (nextAppState) => {
+      console.log('📱 [APP-STATE] Changed to:', nextAppState);
       
+      if (appStateRef.current.match(/inactive|background/) && nextAppState === 'active') {
+        console.log('🔄 [APP-STATE] App foregrounded, reconnecting...');
+        if (socketRef.current && !socketRef.current.connected) {
+          initializeSocket();
+        }
+      }
+      
+      appStateRef.current = nextAppState;
+    };
+    
+    const appStateSubscription = AppState.addEventListener('change', handleAppStateChange);
+    
+    setTimeout(() => {
+      safeSetState(setLoading, false);
+    }, 1000);
+    
+    return () => {
+      console.log('🧹 [LIFECYCLE] Component unmounting');
+      mountedRef.current = false;
+      
+      // Clear fallback join timer
+      clearTimeout(fallbackJoinTimer);
+      
+      if (timerIntervalRef.current) {
+        clearInterval(timerIntervalRef.current);
+      }
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current);
       }
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
-      }
-      if (timerRef.current) {
-        clearInterval(timerRef.current);
-      }
       
-      if (socketRef.current?.connected && roomJoinedRef.current) {
-        socketRef.current.emit('leave_consultation', {
-          roomId: getCurrentRoomId(),
-          bookingId,
-          sessionId
+      if (socketRef.current) {
+        const events = [
+          'connect', 'disconnect', 'connect_error',
+          'receive_message', 'message_delivered', 'typing_indicator',
+          'session_started', 'session_timer', 'session_ended'
+        ];
+        
+        events.forEach(event => {
+          socketRef.current.off(event);
         });
       }
       
-      if (socketRef.current) {
-        socketRef.current.off('receive_message', handleIncomingMessage);
-        socketRef.current.off('message_delivered', handleMessageDelivered);
-        socketRef.current.off('typing_started', handleTypingStarted);
-        socketRef.current.off('typing_stopped', handleTypingStopped);
-        socketRef.current.off('session_timer_update', handleTimerUpdate);
-        socketRef.current.off('session_started', handleSessionStarted);
-        socketRef.current.off('session_ended', handleSessionEnded);
-        socketRef.current.off('missed_messages', handleMissedMessages);
-      }
+      appStateSubscription?.remove();
     };
   }, []);
 
-  // Render message item
+  // ===== RENDER =====
   const renderMessage = useCallback(({ item }) => {
-    const isOwnMessage = item.sender === authUser?.id || item.senderRole === 'astrologer';
+    const isOwnMessage = item.senderType === 'astrologer';
+    
+    console.log('🎨 [RENDER] Rendering message:', {
+      content: item.content,
+      senderType: item.senderType,
+      senderId: item.senderId,
+      isOwnMessage,
+      timestamp: item.timestamp
+    });
     
     return (
-      <View style={[
-        styles.messageContainer,
-        isOwnMessage ? styles.ownMessage : styles.otherMessage
-      ]}>
-        <View style={[
-          styles.messageBubble,
-          isOwnMessage ? styles.ownBubble : styles.otherBubble
-        ]}>
-          <Text style={[
-            styles.messageText,
-            isOwnMessage ? styles.ownMessageText : styles.otherMessageText
-          ]}>
+      <View style={[styles.messageContainer, isOwnMessage ? styles.ownMessage : styles.otherMessage]}>
+        <View style={[styles.messageBubble, isOwnMessage ? styles.ownBubble : styles.otherBubble]}>
+          <Text style={[styles.messageText, isOwnMessage ? styles.ownMessageText : styles.otherMessageText]}>
             {item.content}
           </Text>
           <View style={styles.messageFooter}>
-            <Text style={[
-              styles.messageTime,
-              isOwnMessage ? styles.ownMessageTime : styles.otherMessageTime
-            ]}>
-              {formatTime(item.timestamp)}
+            <Text style={[styles.messageTime, isOwnMessage ? styles.ownMessageTime : styles.otherMessageTime]}>
+              {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </Text>
             {isOwnMessage && (
               <View style={styles.messageStatus}>
-                {item.status === 'sending' && (
-                  <Text style={styles.statusText}>⏳</Text>
-                )}
-                {item.status === 'sent' && (
-                  <Text style={styles.statusText}>✓</Text>
-                )}
-                {item.status === 'delivered' && (
-                  <Text style={styles.statusText}>✓✓</Text>
-                )}
-                {item.status === 'failed' && (
-                  <Text style={styles.statusTextFailed}>✗</Text>
-                )}
+                {item.status === 'sending' && <Ionicons name="time-outline" size={12} color="#E0E0E0" />}
+                {item.status === 'sent' && <Ionicons name="checkmark" size={12} color="#E0E0E0" />}
+                {item.status === 'delivered' && <Ionicons name="checkmark-done" size={12} color="#E0E0E0" />}
+                {item.status === 'failed' && <Ionicons name="alert-circle" size={12} color="#FF6B6B" />}
               </View>
             )}
           </View>
         </View>
       </View>
     );
-  }, [authUser?.id]);
+  }, []);
 
-  // Format time helper
-  const formatTime = (timestamp) => {
-    if (!timestamp) return '';
-    const date = new Date(timestamp);
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  };
+  // Handle duplicate mount attempts - but still show UI
+  if (isDuplicateMount) {
+    console.log('🚫 [RENDER] Duplicate mount detected, but showing UI:', componentIdRef.current);
+    // Don't return loading screen, continue to show the actual chat UI
+    // The mounting guard will prevent duplicate initialization
+  }
 
-  // Format timer display
-  const formatTimerDisplay = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  // Connection status banner
-  const renderConnectionBanner = () => {
-    if (connectionStatus === 'connected') return null;
-    
-    const bannerConfig = {
-      connecting: { color: '#FFA500', text: 'Connecting...', icon: '🔄' },
-      reconnecting: { color: '#FF6B35', text: 'Reconnecting...', icon: '🔄' },
-      disconnected: { color: '#FF4444', text: 'Connection lost', icon: '⚠️' }
-    };
-    
-    const config = bannerConfig[connectionStatus] || bannerConfig.disconnected;
-    
-    return (
-      <View style={[styles.connectionBanner, { backgroundColor: config.color }]}>
-        <Text style={styles.connectionBannerText}>
-          {config.icon} {config.text}
-        </Text>
-      </View>
-    );
-  };
-
-  if (loading) {
+  // Handle missing auth data
+  if (!authUser?.id) {
+    console.log('🚫 [RENDER] Waiting for auth data to load...');
     return (
       <SafeAreaView style={styles.safeArea}>
-        <StatusBar 
-          barStyle="light-content" 
-          backgroundColor="#6B46C1" 
-          translucent={false}
-        />
         <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#FFFFFF" />
-          <Text style={styles.loadingText}>Loading consultation...</Text>
+          <ActivityIndicator size="large" color="#6B46C1" />
+          <Text style={styles.loadingText}>Loading user data...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#6B46C1" />
+          <Text style={styles.loadingText}>Connecting to consultation...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  const getStatusInfo = () => {
+    switch (connectionStatus) {
+      case 'connected':
+        return { color: '#10B981', text: sessionActive ? 'Connected' : 'Waiting for session to start...' };
+      case 'connecting':
+        return { color: '#F59E0B', text: 'Connecting...' };
+      case 'error':
+        return { color: '#EF4444', text: 'Connection lost. Retrying...' };
+      default:
+        return { color: '#6B7280', text: 'Unknown status' };
+    }
+  };
+
+  const statusInfo = getStatusInfo();
+
+  // Debug current messages state
+  console.log('🔍 [RENDER] Current messages state:', {
+    totalMessages: messages.length,
+    messages: messages.map(m => ({
+      id: m.id,
+      content: m.content?.substring(0, 20) + '...',
+      senderType: m.senderType,
+      isOwn: m.senderType === 'astrologer'
+    }))
+  });
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar 
-        barStyle="light-content" 
-        backgroundColor="#6B46C1" 
-        translucent={false}
-      />
-      {renderConnectionBanner()}
+      <StatusBar barStyle="light-content" backgroundColor="#6B46C1" />
       
-      {/* Header */}
-      <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => navigation.goBack()}
-        >
-          <Text style={styles.backButtonText}>←</Text>
-        </TouchableOpacity>
-        
-        <View style={styles.headerInfo}>
-          <Text style={styles.headerTitle}>
-            {sessionData?.userName || 'User'}
-          </Text>
-          <Text style={styles.headerSubtitle}>
-            {connectionStatus === 'connected' ? 'Online' : 'Connecting...'}
-          </Text>
+      <KeyboardAvoidingView 
+        style={styles.container}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
+        <View style={styles.header}>
+          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+            <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+          
+          <View style={styles.headerCenter}>
+            <Text style={styles.headerTitle}>
+              {bookingDetails?.user?.name || 'User'}
+            </Text>
+            <Text style={styles.headerSubtitle}>
+              {consultationType === 'chat' ? 'Chat Consultation' : 'Consultation'}
+            </Text>
+          </View>
+          
+          <View style={styles.headerRight}>
+            {sessionActive && timerData.isActive && (
+              <View style={styles.timerContainer}>
+                <Text style={styles.timerText}>
+                  {formatTime(timerData.elapsed)}
+                </Text>
+                <Text style={styles.amountText}>
+                  ₹{Math.ceil((timerData.elapsed / 60) * (bookingDetails?.rate || 50))}/min
+                </Text>
+              </View>
+            )}
+            
+            {sessionActive && (
+              <TouchableOpacity style={styles.endSessionButton} onPress={endSession}>
+                <Ionicons name="stop-circle" size={16} color="#FF4444" />
+                <Text style={styles.endSessionText}>End</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
-        
-        <View style={styles.headerRight}>
-          {sessionActive && (
-            <View style={styles.timerContainer}>
-              <Text style={styles.timerText}>
-                {formatTimerDisplay(timerData.elapsed)}
-              </Text>
-              <Text style={styles.amountText}>
-                {timerData.currency}{timerData.amount}
-              </Text>
-            </View>
-          )}
-          {sessionActive && (
-            <TouchableOpacity 
-              style={styles.endSessionButton} 
-              onPress={handleEndSession}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="stop-circle" size={20} color="#FF4444" />
-              <Text style={styles.endSessionText}>End</Text>
-            </TouchableOpacity>
-          )}
+
+        <View style={[styles.statusBanner, { backgroundColor: statusInfo.color }]}>
+          <Text style={styles.statusText}>{statusInfo.text}</Text>
         </View>
-      </View>
 
-      {/* Messages */}
-      <FlatList
-        ref={flatListRef}
-        data={messages}
-        renderItem={renderMessage}
-        keyExtractor={(item) => item.id}
-        style={styles.messagesList}
-        contentContainerStyle={styles.messagesContent}
-        onContentSizeChange={() => {
-          if (flatListRef.current && messages.length > 0) {
-            flatListRef.current.scrollToEnd({ animated: true });
-          }
-        }}
-      />
-
-      {/* Typing indicator */}
-      {userTyping && (
-        <View style={styles.typingContainer}>
-          <Text style={styles.typingText}>User is typing...</Text>
-        </View>
-      )}
-
-      {/* Input */}
-      <View style={styles.inputContainer}>
-        <TextInput
-          style={styles.textInput}
-          value={inputText}
-          onChangeText={handleInputChange}
-          placeholder="Type your message..."
-          placeholderTextColor="#999"
-          multiline
-          maxLength={1000}
+        <FlatList
+          ref={flatListRef}
+          data={messages}
+          keyExtractor={(item) => item.id}
+          renderItem={renderMessage}
+          style={styles.messagesList}
+          contentContainerStyle={styles.messagesContent}
+          showsVerticalScrollIndicator={false}
+          onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
         />
-        <TouchableOpacity
-          style={[
-            styles.sendButton,
-            !inputText.trim() && styles.sendButtonDisabled
-          ]}
-          onPress={sendMessage}
-          disabled={!inputText.trim()}
-        >
-          <Text style={styles.sendButtonText}>Send</Text>
-        </TouchableOpacity>
-      </View>
+
+        {userTyping && (
+          <View style={styles.typingContainer}>
+            <Text style={styles.typingText}>User is typing...</Text>
+          </View>
+        )}
+
+        <View style={styles.inputContainer}>
+          <TextInput
+            style={styles.textInput}
+            value={inputText}
+            onChangeText={handleInputChange}
+            placeholder="Type your message..."
+            placeholderTextColor="#999"
+            multiline
+            maxLength={1000}
+            editable={sessionActive && connectionStatus !== 'error'}
+          />
+          <TouchableOpacity
+            style={[
+              styles.sendButton,
+              (!inputText.trim() || !sessionActive) && styles.sendButtonDisabled
+            ]}
+            onPress={sendMessage}
+            disabled={!inputText.trim() || !sessionActive}
+          >
+            <Ionicons name="send" size={20} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
@@ -1155,42 +919,36 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: '#F5F5F5',
   },
   loadingText: {
-    color: '#FFFFFF',
     marginTop: 10,
     fontSize: 16,
+    color: '#666',
   },
-  connectionBanner: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    alignItems: 'center',
-  },
-  connectionBannerText: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-    fontSize: 14,
+  container: {
+    flex: 1,
+    backgroundColor: '#F5F5F5',
   },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
     backgroundColor: '#6B46C1',
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255, 255, 255, 0.1)',
+    paddingTop: Platform.OS === 'ios' ? 10 : 25,
+    paddingBottom: 15,
+    paddingHorizontal: 15,
+    elevation: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
   },
   backButton: {
     padding: 8,
+    marginRight: 8,
   },
-  backButtonText: {
-    color: '#FFFFFF',
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
-  headerInfo: {
+  headerCenter: {
     flex: 1,
-    marginLeft: 12,
   },
   headerTitle: {
     color: '#FFFFFF',
@@ -1208,40 +966,50 @@ const styles = StyleSheet.create({
   },
   timerContainer: {
     alignItems: 'flex-end',
+    marginRight: 12,
   },
   timerText: {
     color: '#FFFFFF',
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: 'bold',
   },
   amountText: {
-    color: 'rgba(255, 255, 255, 0.8)',
+    color: 'rgba(255, 255, 255, 0.9)',
     fontSize: 12,
     marginTop: 2,
   },
   endSessionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 68, 68, 0.1)',
+    backgroundColor: 'rgba(255, 68, 68, 0.2)',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 12,
-    marginLeft: 10,
     borderWidth: 1,
-    borderColor: 'rgba(255, 68, 68, 0.3)',
+    borderColor: '#FF4444',
   },
   endSessionText: {
     color: '#FF4444',
     fontSize: 12,
-    fontWeight: '600',
+    fontWeight: 'bold',
     marginLeft: 4,
+  },
+  statusBanner: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    alignItems: 'center',
+  },
+  statusText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    fontSize: 14,
   },
   messagesList: {
     flex: 1,
-    backgroundColor: '#F3F4F6',
+    paddingHorizontal: 16,
   },
   messagesContent: {
-    padding: 16,
+    paddingVertical: 16,
   },
   messageContainer: {
     marginVertical: 4,
@@ -1254,53 +1022,50 @@ const styles = StyleSheet.create({
   },
   messageBubble: {
     maxWidth: '80%',
-    paddingHorizontal: 16,
+    paddingHorizontal: 15,
     paddingVertical: 10,
     borderRadius: 20,
   },
   ownBubble: {
     backgroundColor: '#6B46C1',
+    borderBottomRightRadius: 5,
   },
   otherBubble: {
     backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderBottomLeftRadius: 5,
+    elevation: 1,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
   },
   messageText: {
     fontSize: 16,
-    lineHeight: 22,
+    lineHeight: 20,
   },
   ownMessageText: {
     color: '#FFFFFF',
   },
   otherMessageText: {
-    color: '#1F2937',
+    color: '#333333',
   },
   messageFooter: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    marginTop: 4,
+    marginTop: 5,
   },
   messageTime: {
     fontSize: 12,
+    marginRight: 5,
   },
   ownMessageTime: {
-    color: 'rgba(255, 255, 255, 0.7)',
+    color: '#E0E0E0',
   },
   otherMessageTime: {
-    color: '#9CA3AF',
+    color: '#999999',
   },
   messageStatus: {
-    marginLeft: 8,
-  },
-  statusText: {
-    color: 'rgba(255, 255, 255, 0.7)',
-    fontSize: 12,
-  },
-  statusTextFailed: {
-    color: '#FF6B6B',
-    fontSize: 12,
+    marginLeft: 5,
   },
   typingContainer: {
     paddingHorizontal: 16,
@@ -1315,37 +1080,34 @@ const styles = StyleSheet.create({
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    paddingBottom: Platform.OS === 'android' ? 20 : 12,
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    paddingBottom: Platform.OS === 'android' ? 20 : 10,
     backgroundColor: '#FFFFFF',
     borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
+    borderTopColor: '#E0E0E0',
   },
   textInput: {
     flex: 1,
     borderWidth: 1,
-    borderColor: '#D1D5DB',
+    borderColor: '#E0E0E0',
     borderRadius: 20,
-    paddingHorizontal: 16,
+    paddingHorizontal: 15,
     paddingVertical: 10,
     fontSize: 16,
     maxHeight: 100,
-    marginRight: 12,
+    marginRight: 10,
   },
   sendButton: {
     backgroundColor: '#6B46C1',
+    borderRadius: 20,
     paddingHorizontal: 20,
     paddingVertical: 10,
-    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   sendButtonDisabled: {
-    backgroundColor: '#D1D5DB',
-  },
-  sendButtonText: {
-    color: '#FFFFFF',
-    fontWeight: 'bold',
-    fontSize: 16,
+    backgroundColor: '#CCCCCC',
   },
 });
 
