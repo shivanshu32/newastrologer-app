@@ -187,6 +187,7 @@ const BookingRequestHandler = () => {
                 params: {
                   bookingId: currentBookingRequest._id,
                   sessionId: response.sessionId || currentBookingRequest.sessionId,
+                  consultationType: 'chat',
                   isFreeChat: true,
                   freeChatId: currentBookingRequest._id,
                   astrologer: currentBookingRequest.astrologer,
