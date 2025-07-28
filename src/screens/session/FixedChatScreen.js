@@ -13,6 +13,8 @@ import {
   StatusBar,
   SafeAreaView,
   AppState,
+  Modal,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
@@ -75,6 +77,7 @@ const FixedChatScreen = ({ route, navigation }) => {
   const [userTyping, setUserTyping] = useState(false); // User typing state
   const [isTyping, setIsTyping] = useState(false); // Astrologer typing state
   const [loading, setLoading] = useState(true);
+  const [showUserInfo, setShowUserInfo] = useState(false); // User info panel visibility
   
   const [timerData, setTimerData] = useState({
     elapsed: 0,
@@ -1198,6 +1201,123 @@ const FixedChatScreen = ({ route, navigation }) => {
     );
   }
 
+  // ===== UTILITY FUNCTIONS FOR USER INFO =====
+  const formatDate = (dateString) => {
+    if (!dateString) return 'Not provided';
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-IN', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+      });
+    } catch (error) {
+      return 'Invalid date';
+    }
+  };
+
+  const formatUserTime = (timeString) => {
+    if (!timeString) return 'Not provided';
+    try {
+      const time = new Date(timeString);
+      return time.toLocaleTimeString('en-IN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true
+      });
+    } catch (error) {
+      return 'Invalid time';
+    }
+  };
+
+  const getGenderDisplayText = (gender) => {
+    // Gender values are already capitalized in the database
+    return gender || 'Not specified';
+  };
+
+  // Extract user info from booking details
+  const userInfo = bookingDetails?.userInfo || {};
+
+  // ===== USER INFO PANEL COMPONENT =====
+  const renderUserInfoPanel = () => (
+    <Modal
+      visible={showUserInfo}
+      transparent={true}
+      animationType="slide"
+      onRequestClose={() => setShowUserInfo(false)}
+    >
+      <View style={styles.modalOverlay}>
+        <View style={styles.userInfoModal}>
+          <View style={styles.userInfoHeader}>
+            <Text style={styles.userInfoTitle}>User Profile Information</Text>
+            <TouchableOpacity
+              style={styles.closeButton}
+              onPress={() => setShowUserInfo(false)}
+            >
+              <Ionicons name="close" size={24} color="#666" />
+            </TouchableOpacity>
+          </View>
+          
+          <ScrollView style={styles.userInfoContent} showsVerticalScrollIndicator={false}>
+            <View style={styles.userInfoSection}>
+              <Text style={styles.sectionTitle}>Personal Information</Text>
+              
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Full Name:</Text>
+                <Text style={styles.infoValue}>{userInfo.name || 'Not provided'}</Text>
+              </View>
+              
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Gender:</Text>
+                <Text style={styles.infoValue}>{getGenderDisplayText(userInfo.gender)}</Text>
+              </View>
+            </View>
+
+            <View style={styles.userInfoSection}>
+              <Text style={styles.sectionTitle}>Birth Information</Text>
+              
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Date of Birth:</Text>
+                <Text style={styles.infoValue}>{formatDate(userInfo.dateOfBirth)}</Text>
+              </View>
+              
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Time of Birth:</Text>
+                <Text style={styles.infoValue}>
+                  {userInfo.isTimeOfBirthUnknown 
+                    ? 'Unknown' 
+                    : formatUserTime(userInfo.timeOfBirth)
+                  }
+                </Text>
+              </View>
+              
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Place of Birth:</Text>
+                <Text style={styles.infoValue}>{userInfo.placeOfBirth || 'Not provided'}</Text>
+              </View>
+            </View>
+
+            <View style={styles.userInfoSection}>
+              <Text style={styles.sectionTitle}>Consultation Details</Text>
+              
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Consultation Type:</Text>
+                <Text style={styles.infoValue}>
+                  {consultationType?.charAt(0).toUpperCase() + consultationType?.slice(1) || 'Chat'}
+                </Text>
+              </View>
+              
+              <View style={styles.infoRow}>
+                <Text style={styles.infoLabel}>Booking ID:</Text>
+                <Text style={styles.infoValue}>{bookingId || 'N/A'}</Text>
+              </View>
+            </View>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  );
+
   const getStatusInfo = () => {
     switch (connectionStatus) {
       case 'connected':
@@ -1240,7 +1360,7 @@ const FixedChatScreen = ({ route, navigation }) => {
           
           <View style={styles.headerCenter}>
             <Text style={styles.headerTitle}>
-              {bookingDetails?.user?.name || 'User'}
+              {userInfo.name || bookingDetails?.user?.name || 'User'}
             </Text>
             <Text style={styles.headerSubtitle}>
               {consultationType === 'chat' ? 'Chat Consultation' : 'Consultation'}
@@ -1248,6 +1368,13 @@ const FixedChatScreen = ({ route, navigation }) => {
           </View>
           
           <View style={styles.headerRight}>
+            {/* User Info Button */}
+            <TouchableOpacity 
+              style={styles.userInfoButton} 
+              onPress={() => setShowUserInfo(true)}
+            >
+              <Ionicons name="person-circle-outline" size={20} color="#FFFFFF" />
+            </TouchableOpacity>
             {sessionActive && (timerData.isActive || timerData.duration > 0) && (
               <View style={styles.timerContainer}>
                 <Text style={styles.timerText}>
@@ -1309,6 +1436,9 @@ const FixedChatScreen = ({ route, navigation }) => {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+      
+      {/* User Info Panel Modal */}
+      {renderUserInfoPanel()}
     </SafeAreaView>
   );
 };
@@ -1393,10 +1523,10 @@ const styles = StyleSheet.create({
     borderColor: '#FF4444',
   },
   endSessionText: {
-    color: '#FF4444',
     fontSize: 12,
-    fontWeight: 'bold',
+    color: '#FF4444',
     marginLeft: 4,
+    fontWeight: '600',
   },
   statusBanner: {
     paddingVertical: 8,
@@ -1537,6 +1667,84 @@ const styles = StyleSheet.create({
   readTick2: {
     position: 'absolute',
     left: 3,
+  },
+  // User Info Button and Panel Styles
+  userInfoButton: {
+    padding: 8,
+    marginRight: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  userInfoModal: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    width: '90%',
+    maxHeight: '80%',
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+  },
+  userInfoHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  userInfoTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  closeButton: {
+    padding: 4,
+  },
+  userInfoContent: {
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+  },
+  userInfoSection: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#6B46C1',
+    marginBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+    paddingBottom: 4,
+  },
+  infoRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  infoLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: '#374151',
+    flex: 1,
+  },
+  infoValue: {
+    fontSize: 14,
+    color: '#1F2937',
+    flex: 1,
+    textAlign: 'right',
+    fontWeight: '400',
   },
 });
 
