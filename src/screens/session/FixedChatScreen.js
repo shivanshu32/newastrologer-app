@@ -51,6 +51,7 @@ const FixedChatScreen = ({ route, navigation }) => {
   const socketRef = useRef(null);
   const flatListRef = useRef(null);
   const typingTimeoutRef = useRef(null);
+  const userTypingTimeoutRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
   const timerIntervalRef = useRef(null);
   const mountedRef = useRef(true);
@@ -71,7 +72,8 @@ const FixedChatScreen = ({ route, navigation }) => {
   const [inputText, setInputText] = useState('');
   const [connectionStatus, setConnectionStatus] = useState('connecting');
   const [sessionActive, setSessionActive] = useState(false);
-  const [userTyping, setUserTyping] = useState(false);
+  const [userTyping, setUserTyping] = useState(false); // User typing state
+  const [isTyping, setIsTyping] = useState(false); // Astrologer typing state
   const [loading, setLoading] = useState(true);
   
   const [timerData, setTimerData] = useState({
@@ -149,7 +151,9 @@ const FixedChatScreen = ({ route, navigation }) => {
         console.log('🚀 [CLEANUP] Cleaning up socket listeners');
         socketRef.current.off('receive_message');
         socketRef.current.off('message_delivered');
-        socketRef.current.off('typing_indicator');
+        socketRef.current.off('message_status_update');
+        socketRef.current.off('typing_started');
+        socketRef.current.off('typing_stopped');
         socketRef.current.off('session_started');
         socketRef.current.off('session_timer');
         socketRef.current.off('session_ended');
@@ -413,6 +417,18 @@ const FixedChatScreen = ({ route, navigation }) => {
     console.log('📨 [MESSAGE] newMessage.senderType:', newMessage.senderType);
     console.log('📨 [MESSAGE] Will be displayed as:', newMessage.senderType === 'astrologer' ? 'OWN MESSAGE' : 'OTHER MESSAGE');
     
+    // Send read receipt for received message
+    const socket = socketRef.current;
+    if (socket?.connected && newMessage.id && newMessage.senderType === 'user') {
+      socket.emit('message_read', {
+        messageId: newMessage.id,
+        bookingId,
+        sessionId,
+        userId: authUser?.id,
+        roomId: `consultation:${bookingId}`
+      });
+    }
+    
     safeSetState(setMessages, prev => {
       const updatedMessages = [...prev, newMessage];
       console.log('📨 [MESSAGE] Total messages after adding:', updatedMessages.length);
@@ -430,31 +446,87 @@ const FixedChatScreen = ({ route, navigation }) => {
   }, [generateMessageId, safeSetState]);
   
   const handleMessageDelivered = useCallback((data) => {
-    console.log('✅ [MESSAGE] Delivered:', data);
+    console.log('✓ [READ_RECEIPT] Message delivered:', data);
     
-    safeSetState(setMessages, prev => 
-      prev.map(msg => 
-        msg.id === data.messageId 
-          ? { ...msg, status: 'delivered' }
-          : msg
-      )
-    );
+    if (data.messageId) {
+      safeSetState(setMessages, prev => 
+        prev.map(msg => 
+          msg.id === data.messageId 
+            ? { ...msg, status: 'delivered', deliveredAt: new Date() }
+            : msg
+        )
+      );
+    }
   }, [safeSetState]);
   
-  const handleTypingIndicator = useCallback((data) => {
-    if (data.userId !== authUser?.id) {
-      safeSetState(setUserTyping, data.isTyping);
+  const handleMessageRead = useCallback((data) => {
+    console.log('✓✓ [READ_RECEIPT] Message read:', data);
+    
+    if (data.messageId) {
+      safeSetState(setMessages, prev => 
+        prev.map(msg => 
+          msg.id === data.messageId 
+            ? { ...msg, status: 'read', readAt: new Date() }
+            : msg
+        )
+      );
+    }
+  }, [safeSetState]);
+  
+  const handleTypingStarted = useCallback((data) => {
+    console.log('✏️ [TYPING] Received typing_started:', data);
+    
+    // Only handle typing from user
+    if (data.senderType === 'user' && data.bookingId === bookingId) {
+      safeSetState(setUserTyping, true);
       
-      if (data.isTyping) {
-        if (typingTimeoutRef.current) {
-          clearTimeout(typingTimeoutRef.current);
-        }
-        typingTimeoutRef.current = setTimeout(() => {
-          safeSetState(setUserTyping, false);
-        }, 3000);
+      // Clear existing timeout
+      if (userTypingTimeoutRef.current) {
+        clearTimeout(userTypingTimeoutRef.current);
+      }
+      
+      // Auto-clear typing indicator after 5 seconds
+      userTypingTimeoutRef.current = setTimeout(() => {
+        safeSetState(setUserTyping, false);
+      }, 5000);
+    }
+  }, [bookingId, safeSetState]);
+  
+  const handleTypingStopped = useCallback((data) => {
+    console.log('✏️ [TYPING] Received typing_stopped:', data);
+    
+    // Only handle typing from user
+    if (data.senderType === 'user' && data.bookingId === bookingId) {
+      safeSetState(setUserTyping, false);
+      
+      // Clear existing timeout
+      if (userTypingTimeoutRef.current) {
+        clearTimeout(userTypingTimeoutRef.current);
       }
     }
-  }, [authUser?.id, safeSetState]);
+  }, [bookingId, safeSetState]);
+  
+  // Legacy handler for backward compatibility
+  const handleTypingIndicator = useCallback((data) => {
+    console.log('✏️ [TYPING] Received typing indicator (legacy):', data);
+    
+    // Only handle typing from user
+    if (data.senderType === 'user' && data.bookingId === bookingId) {
+      safeSetState(setUserTyping, data.isTyping);
+      
+      // Clear existing timeout
+      if (userTypingTimeoutRef.current) {
+        clearTimeout(userTypingTimeoutRef.current);
+      }
+      
+      // Auto-clear typing indicator after 5 seconds if still showing
+      if (data.isTyping) {
+        userTypingTimeoutRef.current = setTimeout(() => {
+          safeSetState(setUserTyping, false);
+        }, 5000);
+      }
+    }
+  }, [bookingId, safeSetState]);
   
   // ===== SESSION EVENT HANDLERS =====
   const handleSessionStarted = useCallback((data) => {
@@ -608,7 +680,9 @@ const FixedChatScreen = ({ route, navigation }) => {
       handleIncomingMessage(data);
     });
     socket.on('message_delivered', handleMessageDelivered);
-    socket.on('typing_indicator', handleTypingIndicator);
+    socket.on('message_status_update', handleMessageRead);
+    socket.on('typing_started', handleTypingStarted);
+    socket.on('typing_stopped', handleTypingStopped);
     
     console.log('🎯 [SOCKET] Registering session_started event listener');
     socket.on('session_started', handleSessionStarted);
@@ -618,11 +692,78 @@ const FixedChatScreen = ({ route, navigation }) => {
     socket.on('session_timer', handleTimerUpdate); // Keep both for compatibility
     socket.on('session_ended', handleSessionEnded);
     
+    // Handle automatic missed message recovery from backend
+    socket.on('missed_messages_recovery', (data) => {
+      console.log('📨 [AUTO_RECOVERY] Missed messages recovery received:', data);
+      console.log('📨 [AUTO_RECOVERY] Current messages count:', messages.length);
+      
+      if (data.success && data.messages && Array.isArray(data.messages)) {
+        console.log(`📨 [AUTO_RECOVERY] Processing ${data.messages.length} recovered messages`);
+        
+        // More robust deduplication using both ID and content+timestamp
+        const newMessages = data.messages.filter(recoveredMsg => {
+          const existingById = messages.find(existing => existing.id === recoveredMsg.id);
+          if (existingById) {
+            console.log(`📨 [AUTO_RECOVERY] Skipping duplicate by ID: ${recoveredMsg.id}`);
+            return false;
+          }
+          
+          // Also check for duplicates by content and timestamp (in case IDs differ)
+          const existingByContent = messages.find(existing => 
+            existing.content === recoveredMsg.content && 
+            existing.senderId === recoveredMsg.senderId &&
+            Math.abs(new Date(existing.timestamp).getTime() - new Date(recoveredMsg.timestamp).getTime()) < 1000 // Within 1 second
+          );
+          
+          if (existingByContent) {
+            console.log(`📨 [AUTO_RECOVERY] Skipping duplicate by content/timestamp: ${recoveredMsg.content.substring(0, 50)}...`);
+            return false;
+          }
+          
+          return true;
+        });
+        
+        if (newMessages.length > 0) {
+          console.log(`📨 [AUTO_RECOVERY] Adding ${newMessages.length} new recovered messages (filtered from ${data.messages.length})`);
+          
+          safeSetState(setMessages, prev => {
+            // Double-check for duplicates in the state update as well
+            const filteredNewMessages = newMessages.filter(newMsg => 
+              !prev.find(existing => existing.id === newMsg.id)
+            );
+            
+            if (filteredNewMessages.length !== newMessages.length) {
+              console.log(`📨 [AUTO_RECOVERY] Final filter removed ${newMessages.length - filteredNewMessages.length} additional duplicates`);
+            }
+            
+            const combined = [...prev, ...filteredNewMessages];
+            return combined.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+          });
+          
+          // Update last message timestamp
+          const latestTimestamp = Math.max(...newMessages.map(msg => new Date(msg.timestamp).getTime()));
+          if (latestTimestamp > lastMessageTimestampRef.current) {
+            lastMessageTimestampRef.current = latestTimestamp;
+            console.log(`📨 [AUTO_RECOVERY] Updated last message timestamp to:`, new Date(latestTimestamp));
+          }
+          
+          // Scroll to bottom to show recovered messages
+          setTimeout(() => {
+            flatListRef.current?.scrollToEnd({ animated: true });
+          }, 100);
+        } else {
+          console.log('📨 [AUTO_RECOVERY] No new messages to add after deduplication (all already present)');
+        }
+      } else {
+        console.log('📨 [AUTO_RECOVERY] Invalid or empty recovery data:', data);
+      }
+    });
+    
     console.log('🎯 [SOCKET] All event listeners registered successfully');
     console.log('🔥 [SOCKET] receive_message listener registered for socket:', socket.id);
     console.log('🔥 [SOCKET] Current room should be: consultation:' + bookingId);
     
-  }, [bookingId, joinConsultationRoom, handleReconnection, handleIncomingMessage, handleMessageDelivered, handleTypingIndicator, handleSessionStarted, handleTimerUpdate, handleSessionEnded, safeSetState]); // Include all handler dependencies to prevent stale closures
+  }, [bookingId, joinConsultationRoom, handleReconnection, handleIncomingMessage, handleMessageDelivered, handleMessageRead, handleTypingStarted, handleTypingStopped, handleTypingIndicator, handleSessionStarted, handleTimerUpdate, handleSessionEnded, safeSetState, messages]); // Include all handler dependencies to prevent stale closures
   
   const joinConsultationRoom = useCallback(() => {
     // Try to get socket reference, fallback to context socket if needed
@@ -813,15 +954,52 @@ const FixedChatScreen = ({ route, navigation }) => {
     
     const socket = socketRef.current;
     if (socket?.connected && sessionActive) {
-      socket.emit('typing_indicator', {
-        bookingId,
-        sessionId,
-        userId: authUser?.id,
-        isTyping: text.length > 0,
-        roomId: getCurrentRoomId()
-      });
+      const isCurrentlyTyping = text.length > 0;
+      
+      // Emit typing indicator
+      if (isCurrentlyTyping) {
+        socket.emit('typing_started', {
+          bookingId,
+          sessionId,
+          userId: authUser?.id,
+          senderType: 'astrologer',
+          roomId: `consultation:${bookingId}`
+        });
+      } else {
+        socket.emit('typing_stopped', {
+          bookingId,
+          sessionId,
+          userId: authUser?.id,
+          senderType: 'astrologer',
+          roomId: `consultation:${bookingId}`
+        });
+      }
+      
+      // Update local typing state
+      safeSetState(setIsTyping, isCurrentlyTyping);
+      
+      // Clear existing timeout
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+      
+      // Set timeout to auto-clear typing after 5 seconds of inactivity
+      if (isCurrentlyTyping) {
+        typingTimeoutRef.current = setTimeout(() => {
+          if (socketRef.current?.connected && sessionActive) {
+            socketRef.current.emit('typing_stopped', {
+              bookingId,
+              sessionId,
+              userId: authUser?.id,
+              senderType: 'astrologer',
+              roomId: `consultation:${bookingId}`
+            });
+          }
+          safeSetState(setIsTyping, false);
+        }, 5000);
+      }
     }
-  }, [sessionActive, bookingId, sessionId, authUser?.id]);
+  }, [sessionActive, bookingId, sessionId, authUser?.id, safeSetState]);
   
   const endSession = useCallback(async () => {
     Alert.alert(
@@ -895,8 +1073,9 @@ const FixedChatScreen = ({ route, navigation }) => {
           console.log('✅ [APP-STATE] Socket still connected, syncing state...');
           // Sync timer from session state even if connected
           syncTimerFromSession();
-          // Request any missed messages
-          requestMissedMessages();
+          // Note: No need to manually request missed messages anymore
+          // Backend automatically sends missed messages via 'missed_messages_recovery' event when rejoining room
+          console.log('📨 [APP-STATE] Skipping manual missed message request - backend handles this automatically');
         }
       }
       
@@ -966,9 +1145,19 @@ const FixedChatScreen = ({ route, navigation }) => {
             </Text>
             {isOwnMessage && (
               <View style={styles.messageStatus}>
-                {item.status === 'sending' && <Ionicons name="time-outline" size={12} color="#E0E0E0" />}
-                {item.status === 'sent' && <Ionicons name="checkmark" size={12} color="#E0E0E0" />}
-                {item.status === 'delivered' && <Ionicons name="checkmark-done" size={12} color="#E0E0E0" />}
+                {item.status === 'sending' && <ActivityIndicator size={10} color="#999" />}
+                {item.status === 'sent' && <Ionicons name="checkmark" size={12} color="#4CAF50" />}
+                {item.status === 'delivered' && (
+                  <View style={styles.readReceiptContainer}>
+                    <Ionicons name="checkmark" size={12} color="#4CAF50" />
+                  </View>
+                )}
+                {item.status === 'read' && (
+                  <View style={styles.readReceiptContainer}>
+                    <Ionicons name="checkmark" size={12} color="#2196F3" style={styles.readTick1} />
+                    <Ionicons name="checkmark" size={12} color="#2196F3" style={styles.readTick2} />
+                  </View>
+                )}
                 {item.status === 'failed' && <Ionicons name="alert-circle" size={12} color="#FF6B6B" />}
               </View>
             )}
@@ -1063,9 +1252,6 @@ const FixedChatScreen = ({ route, navigation }) => {
               <View style={styles.timerContainer}>
                 <Text style={styles.timerText}>
                   {formatTime(timerData.elapsed)}
-                </Text>
-                <Text style={styles.amountText}>
-                  ₹{Math.ceil((timerData.elapsed / 60) * (bookingDetails?.rate || 50))}/min
                 </Text>
               </View>
             )}
@@ -1326,6 +1512,31 @@ const styles = StyleSheet.create({
   },
   sendButtonDisabled: {
     backgroundColor: '#CCCCCC',
+  },
+  typingContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: 'rgba(107, 70, 193, 0.1)',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(107, 70, 193, 0.2)',
+  },
+  typingText: {
+    color: '#6B46C1',
+    fontSize: 14,
+    fontStyle: 'italic',
+  },
+  readReceiptContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  readTick1: {
+    position: 'absolute',
+    left: 0,
+  },
+  readTick2: {
+    position: 'absolute',
+    left: 3,
   },
 });
 
