@@ -19,13 +19,9 @@ import * as Notifications from 'expo-notifications';
 
 const EnhancedNotificationSettings = () => {
   const {
-    permissionStatus,
-    tokenStatus,
-    lastTokenError,
-    retryCount,
-    requestPermissions,
-    refreshPermissionStatus,
-    retryTokenGeneration
+    isInitialized,
+    fcmToken,
+    getStatus
   } = useNotification();
 
   const [isLoading, setIsLoading] = useState(false);
@@ -33,16 +29,36 @@ const EnhancedNotificationSettings = () => {
   const [vibrationEnabled, setVibrationEnabled] = useState(false);
   const [audioPermissionStatus, setAudioPermissionStatus] = useState('undetermined');
   const [sound, setSound] = useState(null);
+  const [permissionStatus, setPermissionStatus] = useState('undetermined');
+  const [tokenStatus, setTokenStatus] = useState('unknown');
 
   // Storage keys for settings
   const SOUND_ENABLED_KEY = '@notification_sound_enabled';
   const VIBRATION_ENABLED_KEY = '@notification_vibration_enabled';
 
+  // Check notification permissions
+  const checkNotificationPermissions = async () => {
+    try {
+      const { status } = await Notifications.getPermissionsAsync();
+      setPermissionStatus(status);
+      
+      // Update token status based on FCM token availability
+      if (fcmToken) {
+        setTokenStatus('available');
+      } else {
+        setTokenStatus('unavailable');
+      }
+    } catch (error) {
+      console.error('Error checking notification permissions:', error);
+      setPermissionStatus('error');
+    }
+  };
+
   // Load settings from storage
   useEffect(() => {
     loadSettings();
     checkAudioPermissions();
-    refreshPermissionStatus();
+    checkNotificationPermissions();
     
     // Cleanup sound on unmount
     return () => {
@@ -50,7 +66,7 @@ const EnhancedNotificationSettings = () => {
         sound.unloadAsync();
       }
     };
-  }, []);
+  }, [fcmToken]);
 
   const loadSettings = async () => {
     try {
@@ -129,7 +145,17 @@ const EnhancedNotificationSettings = () => {
     } else {
       // Request permissions
       setIsLoading(true);
-      await requestPermissions();
+      try {
+        const { status } = await Notifications.requestPermissionsAsync();
+        setPermissionStatus(status);
+        if (status === 'granted') {
+          // Reinitialize FCM service if permissions granted
+          await checkNotificationPermissions();
+        }
+      } catch (error) {
+        console.error('Error requesting notification permissions:', error);
+        setPermissionStatus('error');
+      }
       setIsLoading(false);
     }
   };

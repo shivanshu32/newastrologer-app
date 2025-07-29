@@ -29,7 +29,7 @@ export class NotificationDiagnostics {
       device: await this.checkDevice(),
       permissions: await this.checkPermissions(),
       expo: await this.checkExpoConfig(),
-      firebase: await this.checkFirebaseConfig(),
+      // Firebase diagnostics removed for Expo Go compatibility
       token: await this.checkTokenGeneration(),
       summary: {}
     };
@@ -152,31 +152,7 @@ export class NotificationDiagnostics {
     return config;
   }
   
-  static async checkFirebaseConfig() {
-    console.log('🔍 [DIAG] Checking Firebase configuration...');
-    
-    // This is a basic check - we can't directly access the google-services.json
-    // but we can check if Firebase-related functionality works
-    const firebase = {
-      configFilePresent: 'unknown', // We added it manually
-      projectId: 'jyotish2-dd398', // From the config file
-      canInitialize: false
-    };
-    
-    try {
-      // Try to initialize Firebase functionality through Expo
-      if (isNotificationsAvailable) {
-        // If we can get permissions, Firebase config is likely working
-        const permissions = await Notifications.getPermissionsAsync();
-        firebase.canInitialize = true;
-      }
-    } catch (error) {
-      firebase.error = error.message;
-    }
-    
-    console.log('🔥 [DIAG] Firebase config:', firebase);
-    return firebase;
-  }
+  // Firebase diagnostic function removed for Expo Go compatibility
   
   static async checkTokenGeneration() {
     console.log('🔍 [DIAG] Checking FCM token generation...');

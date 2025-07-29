@@ -21,9 +21,11 @@ import { bookingsAPI, walletAPI, sessionsAPI, versionAPI, earningsAPI } from '..
 import { respondToBookingRequest, getPendingBookings, listenForPendingBookingUpdates } from '../../services/socketService';
 import { SocketContext } from '../../context/SocketContext';
 import { useFocusEffect } from '@react-navigation/native';
+import RejoinChatBottomSheet from '../../components/RejoinChatBottomSheet';
+import FreeChatBottomSheet from '../../components/FreeChatBottomSheet';
 
 // Hardcoded app version - update this when releasing new versions
-const APP_VERSION = '5.0.7';
+const APP_VERSION = '5.1.0';
 
 const HomeScreen = ({ navigation }) => {
   const [pendingBookings, setPendingBookings] = useState([]);
@@ -42,6 +44,17 @@ const HomeScreen = ({ navigation }) => {
     avgRating: 4.8
   });
   const [loadingInsights, setLoadingInsights] = useState(false);
+  
+  // Rejoin chat functionality state
+  const [showRejoinBottomSheet, setShowRejoinBottomSheet] = useState(false);
+  const [activeSessionData, setActiveSessionData] = useState(null);
+  const [remainingTime, setRemainingTime] = useState(null);
+  const [remainingTimeTimer, setRemainingTimeTimer] = useState(null);
+  
+  // Free chat functionality state
+  const [showFreeChatBottomSheet, setShowFreeChatBottomSheet] = useState(false);
+  const [freeChatNotificationCount, setFreeChatNotificationCount] = useState(0);
+  
   const { user, updateStatus } = useAuth();
   const { socket, isConnected } = useContext(SocketContext);
   
@@ -172,6 +185,120 @@ const HomeScreen = ({ navigation }) => {
     }
   };
   
+  // Rejoin chat functionality
+  const clearRemainingTimeTimer = () => {
+    if (remainingTimeTimer) {
+      clearInterval(remainingTimeTimer);
+      setRemainingTimeTimer(null);
+    }
+  };
+  
+  const startRemainingTimeTimer = (initialTime) => {
+    clearRemainingTimeTimer();
+    
+    const timer = setInterval(() => {
+      setRemainingTime(prevTime => {
+        if (prevTime <= 1) {
+          clearRemainingTimeTimer();
+          setShowRejoinBottomSheet(false);
+          setActiveSessionData(null);
+          return 0;
+        }
+        return prevTime - 1;
+      });
+    }, 1000);
+    
+    setRemainingTimeTimer(timer);
+  };
+  
+  // Check for active session (for rejoin functionality)
+  const checkActiveSession = async () => {
+    try {
+      console.log('🔄 [HOME] Checking for active session...');
+      console.log('🔄 [HOME] Current state - showRejoinBottomSheet:', showRejoinBottomSheet);
+      console.log('🔄 [HOME] Current state - activeSessionData:', activeSessionData);
+      
+      const response = await sessionsAPI.checkActiveSession();
+      console.log('📋 [HOME] Active session response:', JSON.stringify(response, null, 2));
+      console.log('📋 [HOME] Response type:', typeof response);
+      console.log('📋 [HOME] Response.success:', response?.success);
+      console.log('📋 [HOME] Response.hasActiveSession:', response?.hasActiveSession);
+      console.log('📋 [HOME] Response.data:', response?.data);
+      
+      if (response && response.success && response.hasActiveSession && response.data) {
+        const sessionData = response.data;
+        console.log('✅ [HOME] Found active session:', JSON.stringify(sessionData, null, 2));
+        console.log('✅ [HOME] Session type:', sessionData.type);
+        console.log('✅ [HOME] Session status:', sessionData.status);
+        console.log('✅ [HOME] Is free chat:', sessionData.isFreeChat);
+        console.log('✅ [HOME] User info:', sessionData.user);
+        
+        console.log('🎯 [HOME] Setting active session data and showing bottom sheet...');
+        setActiveSessionData(sessionData);
+        setShowRejoinBottomSheet(true);
+        console.log('🎯 [HOME] Bottom sheet should now be visible');
+        
+        // Start timer for free chat sessions
+        if (sessionData.isFreeChat && sessionData.remainingTime !== null) {
+          console.log('⏱️ [HOME] Starting timer for free chat session:', sessionData.remainingTime);
+          setRemainingTime(sessionData.remainingTime);
+          startRemainingTimeTimer(sessionData.remainingTime);
+        }
+      } else {
+        console.log('ℹ️ [HOME] No active session found or invalid response');
+        console.log('ℹ️ [HOME] Response success:', response?.success);
+        console.log('ℹ️ [HOME] Has active session:', response?.hasActiveSession);
+        console.log('ℹ️ [HOME] Data present:', !!response?.data);
+        setActiveSessionData(null);
+        setShowRejoinBottomSheet(false);
+        clearRemainingTimeTimer();
+      }
+    } catch (error) {
+      console.error('❌ [HOME] Error checking active session:', error);
+      console.error('❌ [HOME] Error details:', {
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data
+      });
+      
+      // Don't show error to user, just hide the bottom sheet
+      setActiveSessionData(null);
+      setShowRejoinBottomSheet(false);
+      clearRemainingTimeTimer();
+    }
+  };
+  
+  const handleRejoinChat = (sessionData) => {
+    console.log('🚀 [HOME] Rejoining chat session:', sessionData);
+    
+    // Hide bottom sheet
+    setShowRejoinBottomSheet(false);
+    clearRemainingTimeTimer();
+    
+    // Navigate to appropriate chat screen based on session type
+    if (sessionData.type === 'voice') {
+      // For voice sessions, navigate to voice chat screen
+      navigation.navigate('HomeChat', {
+        bookingId: sessionData.bookingId,
+        sessionId: sessionData.sessionId,
+        rejoin: true
+      });
+    } else {
+      // For text sessions, navigate to enhanced chat screen
+      navigation.navigate('HomeEnhancedChat', {
+        bookingId: sessionData.bookingId,
+        sessionId: sessionData.sessionId,
+        rejoin: true
+      });
+    }
+  };
+  
+  const handleCloseRejoinBottomSheet = () => {
+    setShowRejoinBottomSheet(false);
+    clearRemainingTimeTimer();
+  };
+  
   useEffect(() => {
     // Check app version first
     checkAppVersion().then(canContinue => {
@@ -231,6 +358,40 @@ const HomeScreen = ({ navigation }) => {
             }
           ]
         );
+      });
+      
+      // Listen for free chat requests
+      console.log('🆓 [HOME] Setting up free chat event listeners');
+      
+      socket.on('free_chat_available', (data) => {
+        console.log('🆓 [HOME] New free chat request available:', data);
+        setFreeChatNotificationCount(prev => prev + 1);
+        
+        // Show notification alert
+        Alert.alert(
+          '🆓 Free Chat Request',
+          `New free consultation request from ${data.user?.name || 'User'}`,
+          [
+            {
+              text: 'View Requests',
+              onPress: () => setShowFreeChatBottomSheet(true)
+            },
+            {
+              text: 'Later',
+              style: 'cancel'
+            }
+          ]
+        );
+      });
+      
+      socket.on('free_chat_taken', (data) => {
+        console.log('🚫 [HOME] Free chat request taken by another astrologer:', data);
+        // Notification count will be handled by the FreeChatBottomSheet component
+      });
+      
+      socket.on('free_chat_expired', (data) => {
+        console.log('⏰ [HOME] Free chat request expired:', data);
+        setFreeChatNotificationCount(prev => Math.max(0, prev - 1));
       });
       
       // Listen for call status updates
@@ -313,6 +474,9 @@ const HomeScreen = ({ navigation }) => {
         console.log('🧹 [HOME] Cleaning up socket event listeners');
         socket.off('call_status_update');
         socket.off('voice_consultation_incoming');
+        socket.off('free_chat_available');
+        socket.off('free_chat_taken');
+        socket.off('free_chat_expired');
       };
     }
     
@@ -322,13 +486,21 @@ const HomeScreen = ({ navigation }) => {
     }); // Close the checkAppVersion().then() block
   }, [socket, isConnected]);
   
-  // Refresh wallet balance when screen is focused
+  // Refresh wallet balance and check for active sessions when screen is focused
   useFocusEffect(
     React.useCallback(() => {
-      console.log('HomeScreen focused, refreshing wallet balance');
+      console.log('HomeScreen focused, refreshing wallet balance and checking for active sessions');
       fetchWalletBalance();
+      checkActiveSession();
     }, [])
   );
+  
+  // Cleanup timer on component unmount
+  useEffect(() => {
+    return () => {
+      clearRemainingTimeTimer();
+    };
+  }, []);
 
   const fetchPendingBookings = async () => {
     try {
@@ -931,21 +1103,40 @@ const HomeScreen = ({ navigation }) => {
               <Text style={styles.astrologerName}>{user?.displayName || user?.name || 'Astrologer'}</Text>
             </View>
             
-            <TouchableOpacity 
-              style={styles.headerWalletContainer} 
-              onPress={() => navigation.navigate('Wallet')}
-              activeOpacity={0.7}
-            >
-              <View style={styles.headerWalletContent}>
-                <Ionicons name="wallet-outline" size={24} color="white" />
-                <View style={styles.headerWalletText}>
-                  <Text style={styles.headerWalletBalance}>
-                    ₹{loadingWallet ? '...' : walletBalance.toFixed(2)}
-                  </Text>
-                  <Text style={styles.headerWalletLabel}>Wallet</Text>
+            <View style={styles.headerActions}>
+              {/* Free Chat Notification Button */}
+              {freeChatNotificationCount > 0 && (
+                <TouchableOpacity 
+                  style={styles.freeChatNotificationButton}
+                  onPress={() => setShowFreeChatBottomSheet(true)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.freeChatButtonContent}>
+                    <Ionicons name="chatbubbles" size={20} color="white" />
+                    <View style={styles.notificationBadge}>
+                      <Text style={styles.notificationBadgeText}>{freeChatNotificationCount}</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.freeChatButtonText}>Free Chat</Text>
+                </TouchableOpacity>
+              )}
+              
+              <TouchableOpacity 
+                style={styles.headerWalletContainer} 
+                onPress={() => navigation.navigate('Wallet')}
+                activeOpacity={0.7}
+              >
+                <View style={styles.headerWalletContent}>
+                  <Ionicons name="wallet-outline" size={24} color="white" />
+                  <View style={styles.headerWalletText}>
+                    <Text style={styles.headerWalletBalance}>
+                      ₹{loadingWallet ? '...' : walletBalance.toFixed(2)}
+                    </Text>
+                    <Text style={styles.headerWalletLabel}>Wallet</Text>
+                  </View>
                 </View>
-              </View>
-            </TouchableOpacity>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       
@@ -1070,6 +1261,25 @@ const HomeScreen = ({ navigation }) => {
         )}
         {/* <Button title='Try!' onPress={ () => { Sentry.captureException(new Error('First error')) }}/> */}
       </View>
+      
+      {/* Rejoin Chat Bottom Sheet */}
+      <RejoinChatBottomSheet
+        visible={showRejoinBottomSheet}
+        onClose={handleCloseRejoinBottomSheet}
+        sessionData={activeSessionData}
+        onRejoinPress={handleRejoinChat}
+        remainingTime={remainingTime}
+      />
+      
+      {/* Free Chat Bottom Sheet */}
+      <FreeChatBottomSheet
+        visible={showFreeChatBottomSheet}
+        onClose={() => {
+          setShowFreeChatBottomSheet(false);
+          setFreeChatNotificationCount(0); // Clear notification count when closed
+        }}
+        navigation={navigation}
+      />
     </SafeAreaView>
   );
 };
@@ -1126,6 +1336,47 @@ const styles = StyleSheet.create({
   headerWalletLabel: {
     color: 'rgba(255, 255, 255, 0.8)',
     fontSize: 12,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  freeChatNotificationButton: {
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    alignItems: 'center',
+  },
+  freeChatButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    position: 'relative',
+  },
+  freeChatButtonText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: -8,
+    right: -8,
+    backgroundColor: '#FF4444',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#F97316',
+  },
+  notificationBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
   statsContainer: {
     flexDirection: 'row',

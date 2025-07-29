@@ -15,7 +15,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../../context/AuthContext';
 import { useSocket } from '../../context/SocketContext';
-import { bookingsAPI, sessionsAPI } from '../../services/api';
+import { bookingsAPI, sessionsAPI, chatHistoryAPI } from '../../services/api';
 import * as socketService from '../../services/socketService';
 
 const ChatScreen = ({ route, navigation }) => {
@@ -86,11 +86,62 @@ const ChatScreen = ({ route, navigation }) => {
     }
   };
 
+  const fetchChatHistory = async (currentSessionId) => {
+    try {
+      console.log('🔍 [CHAT] Fetching chat history for sessionId:', currentSessionId);
+      
+      if (!currentSessionId) {
+        console.log('⚠️ [CHAT] No sessionId provided, skipping chat history fetch');
+        return;
+      }
+
+      const response = await chatHistoryAPI.getChatHistory(currentSessionId);
+      const chatHistory = response.data || [];
+      
+      console.log('✅ [CHAT] Chat history fetched:', chatHistory.length, 'messages');
+      
+      if (chatHistory.length > 0) {
+        // Transform chat history to match the expected message format
+        const transformedMessages = chatHistory.map(msg => ({
+          id: msg.id || msg._id || Date.now().toString(),
+          senderId: msg.senderId || msg.sender_id,
+          senderName: msg.senderName || msg.sender_name || (msg.sender === 'astrologer' ? 'Astrologer' : 'User'),
+          text: msg.text || msg.message || msg.content,
+          timestamp: msg.timestamp || msg.createdAt || msg.created_at,
+          status: msg.status || 'sent', // Default status for historical messages
+          sender: msg.sender // Keep original sender field for compatibility
+        }));
+        
+        // Sort messages by timestamp (oldest first)
+        transformedMessages.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+        
+        console.log('📝 [CHAT] Setting', transformedMessages.length, 'historical messages');
+        setMessages(transformedMessages);
+      } else {
+        console.log('📝 [CHAT] No chat history found, starting with empty messages');
+        setMessages([]);
+      }
+    } catch (error) {
+      console.error('❌ [CHAT] Failed to fetch chat history:', error);
+      // Don't show alert for chat history errors, just log and continue
+      // The session can still work with empty message history
+      setMessages([]);
+    }
+  };
+
   const startSession = () => {
     if (socket && isConnected) {
       // Join the room for this booking
-      socket.emit('join_room', { bookingId }, (response) => {
+      socket.emit('join_room', { bookingId }, async (response) => {
         if (response && response.success) {
+          console.log('✅ [CHAT] Successfully joined room for booking:', bookingId);
+          
+          // Fetch existing chat history first
+          const currentSessionId = response.sessionId || sessionId;
+          if (currentSessionId) {
+            await fetchChatHistory(currentSessionId);
+          }
+          
           // Set up message listener using socketService
           const cleanupMessageListener = socketService.listenForChatMessages(socket, (message) => {
             if (message.bookingId === bookingId) {

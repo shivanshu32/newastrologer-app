@@ -33,6 +33,10 @@ const WaitingRoomScreen = () => {
       }
 
       // Call backend API to cancel booking
+      console.log(' [CANCEL_BOOKING] Astrologer cancelling booking:', bookingId);
+      console.log(' [CANCEL_BOOKING] Using token:', token ? 'Token available' : 'No token');
+      console.log(' [CANCEL_BOOKING] API URL:', `https://jyotishcallbackend-2uxrv.ondigitalocean.app/api/v1/bookings/${bookingId}/cancel`);
+      
       const response = await fetch(`https://jyotishcallbackend-2uxrv.ondigitalocean.app/api/v1/bookings/${bookingId}/cancel`, {
         method: 'PUT',
         headers: {
@@ -45,11 +49,16 @@ const WaitingRoomScreen = () => {
       });
 
       // Check if response is JSON
+      console.log(' [CANCEL_BOOKING] Response status:', response.status);
+      console.log(' [CANCEL_BOOKING] Response headers:', response.headers);
+      
       let data;
       try {
         data = await response.json();
+        console.log(' [CANCEL_BOOKING] Response data:', data);
       } catch (parseError) {
-        console.error('Failed to parse response as JSON:', parseError);
+        console.error(' [CANCEL_BOOKING] Failed to parse response as JSON:', parseError);
+        console.error(' [CANCEL_BOOKING] Raw response text:', await response.text());
         throw new Error(`Server error: ${response.status} ${response.statusText}`);
       }
       

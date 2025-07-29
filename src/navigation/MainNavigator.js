@@ -24,6 +24,7 @@ import WalletScreen from '../screens/main/WalletScreen';
 import ProfileScreen from '../screens/main/ProfileScreen';
 import ChatScreen from '../screens/session/ChatScreen';
 import FixedChatScreen from '../screens/session/FixedChatScreen';
+import FixedFreeChatScreen from '../screens/session/FixedFreeChatScreen';
 import TransactionHistoryScreen from '../screens/main/TransactionHistoryScreen';
 import TransactionDetailScreen from '../screens/main/TransactionDetailScreen';
 import ChatHistoryScreen from '../screens/ChatHistoryScreen';
@@ -71,6 +72,7 @@ const HomeStack = ({ navigation, route }) => {
       <Stack.Screen name="HomeMain" component={HomeScreen} />
       <Stack.Screen name="HomeChat" component={ChatScreen} options={{ headerShown: false }} />
       <Stack.Screen name="HomeEnhancedChat" component={FixedChatScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="FixedFreeChatScreen" component={FixedFreeChatScreen} options={{ headerShown: false }} />
       <Stack.Screen name="HomeRating" component={RatingScreen} options={{ headerShown: false }} />
       <Stack.Screen name="Availability" component={AvailabilityScreen} options={{ headerShown: false }} />
       <Stack.Screen name="UpdateScreen" component={UpdateScreen} options={{ headerShown: false }} />

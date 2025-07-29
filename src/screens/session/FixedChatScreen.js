@@ -695,6 +695,46 @@ const FixedChatScreen = ({ route, navigation }) => {
     socket.on('session_timer', handleTimerUpdate); // Keep both for compatibility
     socket.on('session_ended', handleSessionEnded);
     
+    // Handle consultation ended event (when user ends the chat)
+    socket.on('consultation_ended', (data) => {
+      console.log('🔴 [CONSULTATION] Consultation ended event received:', data);
+      console.log('🔴 [CONSULTATION] Ended by:', data.endedBy);
+      console.log('🔴 [CONSULTATION] Session data:', data.sessionData);
+      
+      // Check if this event is for the current booking
+      if (data.bookingId === bookingId) {
+        console.log('🔴 [CONSULTATION] Processing consultation end for current booking');
+        
+        // Update session state
+        safeSetState(setSessionActive, false);
+        stopLocalTimer();
+        
+        // Show notification to astrologer
+        const sessionData = data.sessionData || {};
+        const duration = sessionData.duration || 0;
+        const totalAmount = sessionData.totalAmount || 0;
+        const endedBy = data.endedBy === 'user' ? 'the user' : data.endedBy;
+        
+        Alert.alert(
+          'Consultation Ended',
+          `The consultation has been ended by ${endedBy}.\n\nDuration: ${duration} minutes\nTotal Amount: ₹${totalAmount}`,
+          [
+            {
+              text: 'OK',
+              onPress: () => {
+                console.log('🔴 [CONSULTATION] Navigating back after consultation end');
+                navigation.goBack();
+              }
+            }
+          ],
+          { cancelable: false }
+        );
+      } else {
+        console.log('🔴 [CONSULTATION] Consultation ended event ignored - booking ID mismatch');
+        console.log('🔴 [CONSULTATION] Event booking ID:', data.bookingId, 'Current booking ID:', bookingId);
+      }
+    });
+    
     // Handle automatic missed message recovery from backend
     socket.on('missed_messages_recovery', (data) => {
       console.log('📨 [AUTO_RECOVERY] Missed messages recovery received:', data);

@@ -30,14 +30,13 @@ export default ({ config }) => ({
       "WAKE_LOCK",
       "RECEIVE_BOOT_COMPLETED",
       "VIBRATE",
-      "USE_FULL_SCREEN_INTENT",
       "com.google.android.c2dm.permission.RECEIVE",
       "android.permission.RECEIVE_BOOT_COMPLETED",
       "android.permission.WAKE_LOCK",
-      "android.permission.VIBRATE",
-      "android.permission.USE_FULL_SCREEN_INTENT"
+      "android.permission.VIBRATE"
     ],
     package: "com.jyotishcallastrologerapp",
+    googleServicesFile: "./android/app/google-services.json",
     edgeToEdgeEnabled: false
   },
   web: {
@@ -51,6 +50,7 @@ export default ({ config }) => ({
         "addGeneratedScheme": false
       }
     ],
+    "@react-native-firebase/app",
     "./plugins/withAdIdPermission"
   ],
   extra: {

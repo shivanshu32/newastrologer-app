@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,12 +11,14 @@ import {
   Switch,
   SafeAreaView,
 } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSocket } from '../context/SocketContext';
 import BookingRequestHandler from '../components/BookingRequestHandler';
 import { getPendingBookings, listenForPendingBookingUpdates } from '../services/socketService';
+import { sessionsAPI } from '../services/api';
+import RejoinChatBottomSheet from '../components/RejoinChatBottomSheet';
 import { MaterialIcons } from '@expo/vector-icons';
 
 // Direct import for MaterialIcons
@@ -39,6 +41,12 @@ const AstrologerDashboardScreen = () => {
   const [weeklyEarnings, setWeeklyEarnings] = useState(0);
   const [loading, setLoading] = useState(true);
   const [statusUpdating, setStatusUpdating] = useState(false);
+  
+  // Rejoin Chat Bottom Sheet State
+  const [showRejoinBottomSheet, setShowRejoinBottomSheet] = useState(false);
+  const [activeSessionData, setActiveSessionData] = useState(null);
+  const [remainingTime, setRemainingTime] = useState(null);
+  const [timerInterval, setTimerInterval] = useState(null);
 
   // Fetch astrologer data and stats
   useEffect(() => {
@@ -95,6 +103,174 @@ const AstrologerDashboardScreen = () => {
     const refreshInterval = setInterval(fetchAstrologerData, 120000);
     
     return () => clearInterval(refreshInterval);
+  }, []);
+
+  // Check for active session (for rejoin functionality)
+  const checkActiveSession = async () => {
+    try {
+      console.log('🔄 [DASHBOARD] Checking for active session...');
+      console.log('🔄 [DASHBOARD] Current state - showRejoinBottomSheet:', showRejoinBottomSheet);
+      console.log('🔄 [DASHBOARD] Current state - activeSessionData:', activeSessionData);
+      
+      const response = await sessionsAPI.checkActiveSession();
+      console.log('📋 [DASHBOARD] Active session response:', JSON.stringify(response, null, 2));
+      console.log('📋 [DASHBOARD] Response type:', typeof response);
+      console.log('📋 [DASHBOARD] Response.success:', response?.success);
+      console.log('📋 [DASHBOARD] Response.hasActiveSession:', response?.hasActiveSession);
+      console.log('📋 [DASHBOARD] Response.data:', response?.data);
+      
+      if (response && response.success && response.hasActiveSession && response.data) {
+        const sessionData = response.data;
+        console.log('✅ [DASHBOARD] Found active session:', JSON.stringify(sessionData, null, 2));
+        console.log('✅ [DASHBOARD] Session type:', sessionData.type);
+        console.log('✅ [DASHBOARD] Session status:', sessionData.status);
+        console.log('✅ [DASHBOARD] Is free chat:', sessionData.isFreeChat);
+        console.log('✅ [DASHBOARD] User info:', sessionData.user);
+        
+        console.log('🎯 [DASHBOARD] Setting active session data and showing bottom sheet...');
+        setActiveSessionData(sessionData);
+        setShowRejoinBottomSheet(true);
+        console.log('🎯 [DASHBOARD] Bottom sheet should now be visible');
+        
+        // Start timer for free chat sessions
+        if (sessionData.isFreeChat && sessionData.remainingTime !== null) {
+          console.log('⏱️ [DASHBOARD] Starting timer for free chat session:', sessionData.remainingTime);
+          setRemainingTime(sessionData.remainingTime);
+          startRemainingTimeTimer(sessionData.remainingTime);
+        }
+      } else {
+        console.log('ℹ️ [DASHBOARD] No active session found or invalid response');
+        console.log('ℹ️ [DASHBOARD] Response success:', response?.success);
+        console.log('ℹ️ [DASHBOARD] Has active session:', response?.hasActiveSession);
+        console.log('ℹ️ [DASHBOARD] Data present:', !!response?.data);
+        setActiveSessionData(null);
+        setShowRejoinBottomSheet(false);
+        clearRemainingTimeTimer();
+      }
+    } catch (error) {
+      console.error('❌ [DASHBOARD] Error checking active session:', error);
+      console.error('❌ [DASHBOARD] Error details:', {
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data
+      });
+      
+      // Don't show error to user, just hide the bottom sheet
+      setActiveSessionData(null);
+      setShowRejoinBottomSheet(false);
+      clearRemainingTimeTimer();
+    }
+  };
+
+  // Start timer for remaining time countdown
+  const startRemainingTimeTimer = (initialTime) => {
+    // Clear existing timer
+    clearRemainingTimeTimer();
+    
+    if (initialTime <= 0) {
+      setRemainingTime(0);
+      return;
+    }
+    
+    let currentTime = initialTime;
+    const interval = setInterval(() => {
+      currentTime -= 1;
+      setRemainingTime(currentTime);
+      
+      if (currentTime <= 0) {
+        clearInterval(interval);
+        setTimerInterval(null);
+        // Hide bottom sheet when time expires
+        setShowRejoinBottomSheet(false);
+        setActiveSessionData(null);
+        
+        Alert.alert(
+          'Session Expired',
+          'Your free chat session has ended.',
+          [{ text: 'OK' }]
+        );
+      }
+    }, 1000);
+    
+    setTimerInterval(interval);
+  };
+
+  // Clear remaining time timer
+  const clearRemainingTimeTimer = () => {
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      setTimerInterval(null);
+    }
+  };
+
+  // Handle rejoin chat button press
+  const handleRejoinChat = (sessionData) => {
+    console.log('🔄 [DASHBOARD] Rejoining chat session:', sessionData);
+    
+    // Hide bottom sheet
+    setShowRejoinBottomSheet(false);
+    clearRemainingTimeTimer();
+    
+    try {
+      if (sessionData.isFreeChat) {
+        // Navigate to free chat screen
+        navigation.navigate('FixedFreeChatScreen', {
+          sessionId: sessionData.sessionIdentifier,
+          userName: sessionData.user?.name,
+          rejoin: true
+        });
+      } else {
+        // Navigate to enhanced chat screen for paid consultations
+        navigation.navigate('EnhancedChatScreen', {
+          bookingId: sessionData.bookingId,
+          sessionId: sessionData.sessionId,
+          userName: sessionData.user?.name,
+          rejoin: true
+        });
+      }
+      
+      Alert.alert(
+        'Rejoining Session',
+        'Connecting you back to your consultation...',
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      console.error('❌ [DASHBOARD] Error rejoining session:', error);
+      Alert.alert(
+        'Navigation Error',
+        'Unable to rejoin the session. Please try again.',
+        [{ text: 'OK' }]
+      );
+    }
+  };
+
+  // Handle bottom sheet close
+  const handleBottomSheetClose = () => {
+    setShowRejoinBottomSheet(false);
+    clearRemainingTimeTimer();
+  };
+
+  // Check for active sessions when component mounts and when data refreshes
+  useEffect(() => {
+    if (!loading) {
+      checkActiveSession();
+    }
+  }, [loading]);
+
+  // Check for active sessions when screen comes into focus
+  useFocusEffect(
+    React.useCallback(() => {
+      console.log('🔄 [DASHBOARD] Screen focused, checking for active session...');
+      checkActiveSession();
+    }, [])
+  );
+
+  // Cleanup timer on component unmount
+  useEffect(() => {
+    return () => {
+      clearRemainingTimeTimer();
+    };
   }, []);
   
   // Set up real-time listener for pending booking updates
@@ -338,6 +514,15 @@ const AstrologerDashboardScreen = () => {
         </View>
       </ScrollView>
       </View>
+      
+      {/* Rejoin Chat Bottom Sheet */}
+      <RejoinChatBottomSheet
+        visible={showRejoinBottomSheet}
+        onClose={handleBottomSheetClose}
+        sessionData={activeSessionData}
+        onRejoinPress={handleRejoinChat}
+        remainingTime={remainingTime}
+      />
     </SafeAreaView>
   );
 };

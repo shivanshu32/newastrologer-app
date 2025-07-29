@@ -174,7 +174,7 @@ const NotificationDiagnosticsScreen = ({ navigation }) => {
             {renderSection('Device', diagnostics.device, 'hardware-chip')}
             {renderSection('Permissions', diagnostics.permissions, 'shield-checkmark')}
             {renderSection('Expo Config', diagnostics.expo, 'settings')}
-            {renderSection('Firebase', diagnostics.firebase, 'flame')}
+            {/* Firebase section removed for Expo Go compatibility */}
             {renderSection('Token Generation', diagnostics.token, 'key')}
 
             {/* Action Buttons */}

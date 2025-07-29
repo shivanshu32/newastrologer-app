@@ -701,15 +701,23 @@ const BookingRequestHandler = () => {
       console.log(' [DEBUG] Constructed booking details:', bookingDetails);
       
       try {
+        // Get consultation type with fallback to 'chat' as default
+        const consultationType = data.consultationType || data.type || bookingDetails.type || 'chat';
+        
+        console.log(' [DEBUG] Resolved consultation type:', consultationType);
+        console.log(' [DEBUG] Original data.consultationType:', data.consultationType);
+        console.log(' [DEBUG] Fallback data.type:', data.type);
+        console.log(' [DEBUG] Fallback bookingDetails.type:', bookingDetails.type);
+        
         // Navigate to appropriate session screen based on consultation type
-        if (data.consultationType === 'video') {
+        if (consultationType === 'video') {
           console.log(' [DEBUG] Video consultation - feature unavailable');
           Alert.alert(
             'Video Call Feature Unavailable',
             'Video calling is currently not available. Please use chat or voice call instead.',
             [{ text: 'OK', style: 'default' }]
           );
-        } else if (data.consultationType === 'voice') {
+        } else if (consultationType === 'voice') {
           console.log(' [DEBUG] Voice consultation - triggering Exotel call');
           // For voice calls, trigger Exotel call directly
           // The call will be handled by the backend/Exotel system
@@ -718,15 +726,16 @@ const BookingRequestHandler = () => {
             'You will receive a phone call shortly from our system. Please answer the call to connect with the user.',
             [{ text: 'OK', style: 'default' }]
           );
-        } else if (data.consultationType === 'chat') {
+        } else if (consultationType === 'chat') {
           console.log(' [DEBUG] Chat consultation detected - WaitingRoomScreen will handle navigation');
           console.log(' [DEBUG] Skipping navigation from BookingRequestHandler to prevent conflict');
           console.log(' [DEBUG] WaitingRoomScreen has complete booking details with userInfo and astrologerId');
           // Note: WaitingRoomScreen handles chat navigation with complete booking details
           // This prevents navigation conflict and ensures userInfo is available
         } else {
-          console.error(' [ERROR] Unknown consultation type:', data.consultationType);
-          Alert.alert('Error', 'Unknown consultation type: ' + data.consultationType);
+          console.warn(' [WARNING] Unknown consultation type, defaulting to chat:', consultationType);
+          console.log(' [DEBUG] Treating unknown consultation type as chat consultation');
+          // Default to chat behavior for unknown types
         }
       } catch (navError) {
         console.error(' [ERROR] Navigation to session screen failed:', navError);
